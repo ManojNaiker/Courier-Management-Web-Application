@@ -1,0 +1,528 @@
+import { sql, relations } from 'drizzle-orm';
+import {
+  index,
+  jsonb,
+  pgTable,
+  timestamp,
+  varchar,
+  serial,
+  text,
+  date,
+  integer,
+  boolean,
+  pgEnum,
+} from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+// Session storage table (required for Replit Auth)
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// Enums
+export const roleEnum = pgEnum('role', ['admin', 'sub_admin', 'manager', 'user']);
+export const statusEnum = pgEnum('status', ['on_the_way', 'received', 'completed', 'delivered', 'deleted', 'dispatched']);
+export const fieldTypeEnum = pgEnum('field_type', ['text', 'calendar', 'dropdown']);
+
+// User storage table (required for Replit Auth with extensions)
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  name: varchar("name", { length: 100 }),
+  employeeCode: varchar("employee_code", { length: 50 }),
+  mobileNumber: varchar("mobile_number", { length: 15 }),
+  password: text("password"),
+  role: roleEnum("role").default('user'),
+  departmentId: integer("department_id").references(() => departments.id), // Keep for backward compatibility
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// User-Department junction table for multi-department support
+export const userDepartments = pgTable("user_departments", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  departmentId: integer("department_id").references(() => departments.id, { onDelete: 'cascade' }),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+});
+
+export const departments = pgTable("departments", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  authorityDocumentPath: varchar("authority_document_path", { length: 255 }), // Legacy - kept for backward compatibility
+  deletedAt: timestamp("deleted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const fields = pgTable("fields", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }),
+  type: fieldTypeEnum("type"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const departmentFields = pgTable("department_fields", {
+  id: serial("id").primaryKey(),
+  departmentId: integer("department_id").references(() => departments.id),
+  fieldId: integer("field_id").references(() => fields.id),
+});
+
+export const couriers = pgTable("couriers", {
+  id: serial("id").primaryKey(),
+  departmentId: integer("department_id").references(() => departments.id),
+  createdBy: varchar("created_by").references(() => users.id),
+  toBranch: varchar("to_branch", { length: 100 }),
+  email: varchar("email", { length: 100 }),
+  ccEmails: text("cc_emails"), // Store comma-separated CC email addresses
+  courierDate: date("courier_date"),
+  vendor: varchar("vendor", { length: 100 }),
+  customVendor: varchar("custom_vendor", { length: 100 }),
+  podNo: varchar("pod_no", { length: 100 }),
+  details: text("details"),
+  contactDetails: text("contact_details"),
+  receiverName: varchar("receiver_name", { length: 100 }),
+  remarks: text("remarks"),
+  status: statusEnum("status").default('on_the_way'),
+  receivedDate: date("received_date"),
+  receivedRemarks: text("received_remarks"),
+  podCopyPath: varchar("pod_copy_path"),
+  confirmationToken: varchar("confirmation_token", { length: 255 }), // For email confirmation
+  reminderEmailSent: boolean("reminder_email_sent").default(false), // Track if 24-hour reminder sent
+  reminderEmailSentAt: timestamp("reminder_email_sent_at"), // When reminder was sent
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const receivedCouriers = pgTable("received_couriers", {
+  id: serial("id").primaryKey(),
+  departmentId: integer("department_id").references(() => departments.id),
+  createdBy: varchar("created_by").references(() => users.id),
+  podNumber: varchar("pod_number", { length: 100 }).notNull(),
+  receivedDate: date("received_date").notNull(),
+  fromLocation: varchar("from_location", { length: 200 }).notNull(), // Branch/Other
+  toUser: varchar("to_user", { length: 200 }), // To User/Branch
+  courierVendor: varchar("courier_vendor", { length: 100 }).notNull(),
+  customVendor: varchar("custom_vendor", { length: 100 }),
+  receiverName: varchar("receiver_name", { length: 100 }),
+  emailId: varchar("email_id", { length: 100 }),
+  ccEmails: text("cc_emails"), // Store comma-separated CC email addresses
+  sendEmailNotification: boolean("send_email_notification").default(false),
+  customDepartment: varchar("custom_department", { length: 100 }),
+  remarks: text("remarks"),
+  status: statusEnum("status").default('received'),
+  confirmationToken: varchar("confirmation_token", { length: 255 }), // For email confirmation
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const smtpSettings = pgTable("smtp_settings", {
+  id: serial("id").primaryKey(),
+  host: varchar("host", { length: 200 }),
+  port: integer("port"),
+  useTLS: boolean("use_tls").default(false),
+  useSSL: boolean("use_ssl").default(false),
+  username: varchar("username", { length: 100 }),
+  password: text("password"),
+  fromEmail: varchar("from_email", { length: 100 }),
+  fromName: varchar("from_name", { length: 100 }),
+  applicationUrl: varchar("application_url", { length: 255 }), // Login link URL for emails
+});
+
+export const samlSettings = pgTable("saml_settings", {
+  id: serial("id").primaryKey(),
+  enabled: boolean("enabled").default(false),
+  entityId: varchar("entity_id", { length: 500 }), // Service Provider Entity ID
+  ssoUrl: varchar("sso_url", { length: 500 }), // Identity Provider SSO URL
+  sloUrl: varchar("slo_url", { length: 500 }), // Single Logout URL
+  entryPoint: varchar("entry_point", { length: 500 }), // SAML Entry Point (Login URL)
+  x509Certificate: text("x509_certificate"), // IdP X.509 Certificate
+  attributeMapping: jsonb("attribute_mapping"), // Map SAML attributes to user fields
+  nameIdFormat: varchar("name_id_format", { length: 200 }).default('urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'),
+  signRequests: boolean("sign_requests").default(false),
+  wantAssertionsSigned: boolean("want_assertions_signed").default(true),
+  skillmineIntegration: boolean("skillmine_integration").default(false), // Skillmine SSO specific
+  callbackUrl: varchar("callback_url", { length: 500 }), // ACS URL
+  metadataUrl: varchar("metadata_url", { length: 500 }), // SP Metadata URL
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id),
+  action: varchar("action", { length: 50 }),
+  entityType: varchar("entity_type", { length: 50 }),
+  entityId: varchar("entity_id", { length: 100 }),
+  emailId: varchar("email_id", { length: 255 }), // Track email ID for email confirmations
+  details: text("details"), // Store detailed description of what happened
+  entityData: jsonb("entity_data"), // Store relevant entity information for display
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// Branches table for comprehensive branch management
+export const branches = pgTable("branches", {
+  id: serial("id").primaryKey(),
+  srNo: integer("sr_no"), // Serial number
+  branchName: varchar("branch_name", { length: 255 }).notNull(),
+  branchCode: varchar("branch_code", { length: 50 }).notNull().unique(),
+  branchAddress: text("branch_address").notNull(),
+  pincode: varchar("pincode", { length: 10 }).notNull(),
+  state: varchar("state", { length: 100 }).notNull(),
+  latitude: varchar("latitude", { length: 50 }),
+  longitude: varchar("longitude", { length: 50 }),
+  email: varchar("email", { length: 255 }), // Branch email address
+  status: varchar("status", { length: 20 }).default('active').notNull(), // 'active' or 'closed'
+  departmentId: integer("department_id").references(() => departments.id), // Department-specific branches
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// User policies for department-based tab permissions
+export const userPolicies = pgTable("user_policies", {
+  id: serial("id").primaryKey(),
+  departmentId: integer("department_id").references(() => departments.id),
+  tabName: varchar("tab_name", { length: 100 }).notNull(), // 'branches', 'couriers', etc.
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Password reset tokens table for email link-based password recovery
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull(),
+  token: varchar("token", { length: 255 }).notNull(), // Secure hex token for email links
+  expiresAt: timestamp("expires_at").notNull(),
+  isUsed: boolean("is_used").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Vendor management table
+export const vendors = pgTable("vendors", {
+  id: serial("id").primaryKey(),
+  vendorName: varchar("vendor_name", { length: 100 }).notNull(),
+  mobileNumber: varchar("mobile_number", { length: 15 }),
+  email: varchar("email", { length: 100 }),
+  address: text("address"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Authority letter templates table - Enhanced for PDF generation
+export const authorityLetterTemplates = pgTable('authority_letter_templates', {
+  id: serial('id').primaryKey(),
+  departmentId: integer('department_id').references(() => departments.id),
+  templateName: varchar('template_name', { length: 255 }).notNull(),
+  templateContent: text('template_content').notNull(), // HTML template for PDF generation
+  templateDescription: text('template_description'), // Description for users
+  isDefault: boolean('is_default').default(false),
+  isActive: boolean('is_active').default(true),
+  wordTemplateUrl: varchar('word_template_url', { length: 255 }), // Optional Word template for reference
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Authority letter fields table (for ##field## placeholders)
+export const authorityLetterFields = pgTable('authority_letter_fields', {
+  id: serial('id').primaryKey(),
+  templateId: integer('template_id').references(() => authorityLetterTemplates.id, { onDelete: 'cascade' }),
+  departmentId: integer('department_id').references(() => departments.id), // Keep for backward compatibility
+  fieldName: varchar('field_name', { length: 255 }).notNull(),
+  fieldLabel: varchar('field_label', { length: 255 }).notNull(),
+  fieldType: varchar('field_type', { length: 50 }).default('text').notNull(), // text, number, date
+  textTransform: varchar('text_transform', { length: 30 }).default('none'), // none, sentence, lowercase, uppercase, capitalize_words, toggle
+  numberFormat: varchar('number_format', { length: 20 }).default('none'), // none, with_commas, without_commas
+  dateFormat: varchar('date_format', { length: 30 }).default('DD-MM-YYYY'), // Various date formats
+  sortOrder: integer('sort_order').default(0), // Field display order
+  isRequired: boolean('is_required').default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Dropdown field options table for custom fields
+export const fieldDropdownOptions = pgTable('field_dropdown_options', {
+  id: serial('id').primaryKey(),
+  fieldId: integer('field_id').references(() => fields.id, { onDelete: 'cascade' }),
+  departmentId: integer('department_id').references(() => departments.id),
+  optionValue: varchar('option_value', { length: 255 }).notNull(),
+  optionLabel: varchar('option_label', { length: 255 }).notNull(),
+  sortOrder: integer('sort_order').default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Relations
+export const usersRelations = relations(users, ({ one, many }) => ({
+  department: one(departments, {
+    fields: [users.departmentId],
+    references: [departments.id],
+  }),
+  userDepartments: many(userDepartments),
+  couriers: many(couriers),
+  receivedCouriers: many(receivedCouriers),
+  auditLogs: many(auditLogs),
+}));
+
+export const userDepartmentsRelations = relations(userDepartments, ({ one }) => ({
+  user: one(users, {
+    fields: [userDepartments.userId],
+    references: [users.id],
+  }),
+  department: one(departments, {
+    fields: [userDepartments.departmentId],
+    references: [departments.id],
+  }),
+}));
+
+export const receivedCouriersRelations = relations(receivedCouriers, ({ one }) => ({
+  department: one(departments, {
+    fields: [receivedCouriers.departmentId],
+    references: [departments.id],
+  }),
+  createdByUser: one(users, {
+    fields: [receivedCouriers.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const departmentsRelations = relations(departments, ({ many }) => ({
+  users: many(users),
+  userDepartments: many(userDepartments),
+  couriers: many(couriers),
+  receivedCouriers: many(receivedCouriers),
+  departmentFields: many(departmentFields),
+}));
+
+export const fieldsRelations = relations(fields, ({ many }) => ({
+  departmentFields: many(departmentFields),
+}));
+
+export const departmentFieldsRelations = relations(departmentFields, ({ one }) => ({
+  department: one(departments, {
+    fields: [departmentFields.departmentId],
+    references: [departments.id],
+  }),
+  field: one(fields, {
+    fields: [departmentFields.fieldId],
+    references: [fields.id],
+  }),
+}));
+
+export const couriersRelations = relations(couriers, ({ one }) => ({
+  department: one(departments, {
+    fields: [couriers.departmentId],
+    references: [departments.id],
+  }),
+  creator: one(users, {
+    fields: [couriers.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+}));
+
+export const branchesRelations = relations(branches, ({ one, many }) => ({
+  department: one(departments, {
+    fields: [branches.departmentId],
+    references: [departments.id],
+  }),
+  // Future relations with couriers if needed
+}));
+
+// Insert schemas
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const upsertUserSchema = createInsertSchema(users).pick({
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  profileImageUrl: true,
+  name: true,
+  role: true,
+  departmentId: true,
+});
+
+// Enhanced validation schemas for secure user operations
+export const userProfileUpdateSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name must be less than 100 characters").optional(),
+  firstName: z.string().max(50, "First name must be less than 50 characters").optional().nullable(),
+  lastName: z.string().max(50, "Last name must be less than 50 characters").optional().nullable(),
+  employeeCode: z.string().max(50, "Employee code must be less than 50 characters").optional().nullable(),
+  mobileNumber: z.string().regex(/^[\+]?[1-9][\d]{0,15}$/, "Invalid mobile number format").optional().nullable(),
+  email: z.string().email("Invalid email format").optional(),
+});
+
+export const userPasswordChangeSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, "Password must contain at least one uppercase letter, one lowercase letter, and one number"),
+  confirmPassword: z.string()
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
+
+export const adminUserUpdateSchema = insertUserSchema.extend({
+  role: z.enum(['admin', 'sub_admin', 'manager', 'user']).optional(),
+  departmentId: z.number().int().positive().optional().nullable(),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, "Password must contain at least one uppercase letter, one lowercase letter, and one number")
+    .optional(),
+}).partial();
+
+export const userRegistrationSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name must be less than 100 characters"),
+  email: z.string().email("Invalid email format"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, "Password must contain at least one uppercase letter, one lowercase letter, and one number"),
+  employeeCode: z.string().max(50, "Employee code must be less than 50 characters").optional().nullable(),
+  mobileNumber: z.string().regex(/^[\+]?[1-9][\d]{0,15}$/, "Invalid mobile number format").optional().nullable(),
+  role: z.enum(['admin', 'sub_admin', 'manager', 'user']).default('user'),
+  departmentId: z.number().int().positive().optional().nullable(),
+});
+
+// Secure response filtering schemas
+export const userPublicSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  email: z.string().nullable(),
+  role: z.enum(['admin', 'sub_admin', 'manager', 'user']).nullable(),
+  profileImageUrl: z.string().nullable(),
+  employeeCode: z.string().nullable(),
+});
+
+export const userPrivateSchema = userPublicSchema.extend({
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+  mobileNumber: z.string().nullable(),
+  departmentId: z.number().nullable(),
+  createdAt: z.date().nullable(),
+  updatedAt: z.date().nullable(),
+});
+
+export const insertDepartmentSchema = createInsertSchema(departments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCourierSchema = createInsertSchema(couriers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertFieldSchema = createInsertSchema(fields).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSmtpSettingsSchema = createInsertSchema(smtpSettings).omit({
+  id: true,
+});
+
+export const insertSamlSettingsSchema = createInsertSchema(samlSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  timestamp: true,
+});
+
+export const insertReceivedCourierSchema = createInsertSchema(receivedCouriers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAuthorityLetterTemplateSchema = createInsertSchema(authorityLetterTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAuthorityLetterFieldSchema = createInsertSchema(authorityLetterFields).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBranchSchema = createInsertSchema(branches).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertUserPolicySchema = createInsertSchema(userPolicies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertVendorSchema = createInsertSchema(vendors).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Types
+export type UpsertUser = z.infer<typeof upsertUserSchema>;
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UserProfileUpdate = z.infer<typeof userProfileUpdateSchema>;
+export type UserPasswordChange = z.infer<typeof userPasswordChangeSchema>;
+export type AdminUserUpdate = z.infer<typeof adminUserUpdateSchema>;
+export type UserRegistration = z.infer<typeof userRegistrationSchema>;
+export type UserPublic = z.infer<typeof userPublicSchema>;
+export type UserPrivate = z.infer<typeof userPrivateSchema>;
+export type Department = typeof departments.$inferSelect;
+export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
+export type Courier = typeof couriers.$inferSelect;
+export type InsertCourier = z.infer<typeof insertCourierSchema>;
+export type ReceivedCourier = typeof receivedCouriers.$inferSelect;
+export type InsertReceivedCourier = z.infer<typeof insertReceivedCourierSchema>;
+export type Field = typeof fields.$inferSelect;
+export type InsertField = z.infer<typeof insertFieldSchema>;
+export type SmtpSettings = typeof smtpSettings.$inferSelect;
+export type InsertSmtpSettings = z.infer<typeof insertSmtpSettingsSchema>;
+export type SamlSettings = typeof samlSettings.$inferSelect;
+export type InsertSamlSettings = z.infer<typeof insertSamlSettingsSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuthorityLetterTemplate = typeof authorityLetterTemplates.$inferSelect;
+export type InsertAuthorityLetterTemplate = z.infer<typeof insertAuthorityLetterTemplateSchema>;
+export type AuthorityLetterField = typeof authorityLetterFields.$inferSelect;
+export type InsertAuthorityLetterField = z.infer<typeof insertAuthorityLetterFieldSchema>;
+export type Branch = typeof branches.$inferSelect;
+export type InsertBranch = z.infer<typeof insertBranchSchema>;
+export type UserPolicy = typeof userPolicies.$inferSelect;
+export type InsertUserPolicy = z.infer<typeof insertUserPolicySchema>;
+export type Vendor = typeof vendors.$inferSelect;
+export type InsertVendor = z.infer<typeof insertVendorSchema>;
