@@ -40,6 +40,14 @@ export default function Landing() {
   };
 
   const handleLogin = async () => {
+    if (!loginData.email || !loginData.password) {
+      toast({
+        title: "Error",
+        description: "Email and password are required",
+        variant: "destructive"
+      });
+      return;
+    }
     try {
       await login(loginData);
       toast({ title: "Success", description: "Logged in successfully!" });
@@ -53,6 +61,14 @@ export default function Landing() {
   };
 
   const handleRegister = async () => {
+    if (!registerData.name || !registerData.email || !registerData.password) {
+      toast({
+        title: "Error",
+        description: "Name, email and password are required",
+        variant: "destructive"
+      });
+      return;
+    }
     try {
       await register(registerData);
       toast({ title: "Success", description: "Account created successfully!" });
@@ -163,49 +179,70 @@ export default function Landing() {
                       }}
                     />
                   </div>
+                  {!isRegisterMode && (
+                    <div className="flex items-center space-x-2 mt-2">
+                      <Checkbox 
+                        id="useTempUser" 
+                        checked={loginData.useTempUser}
+                        onCheckedChange={(checked) => setLoginData({ ...loginData, useTempUser: checked as boolean })}
+                      />
+                      <Label htmlFor="useTempUser" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
+                        Use temporary account (CSV)
+                      </Label>
+                    </div>
+                  )}
                   <div className="flex flex-col gap-3">
                     <Button
-                      onClick={handleLogin}
-                      disabled={isLoginLoading}
+                      onClick={isRegisterMode ? handleRegister : handleLogin}
+                      disabled={isRegisterMode ? isRegisterLoading : isLoginLoading}
                       className="w-full bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white border-0 shadow-lg"
                     >
-                      {isLoginLoading ? "Please wait..." : "Sign In"}
+                      {isRegisterMode ? (isRegisterLoading ? "Please wait..." : "Sign Up") : (isLoginLoading ? "Please wait..." : "Sign In")}
                     </Button>
-                    <Button
-                      variant="outline"
-                      onClick={async () => {
-                        if (!loginData.email) {
-                          toast({ 
-                            title: "Error", 
-                            description: "Please enter your email address first",
-                            variant: "destructive" 
-                          });
-                          return;
-                        }
-                        
-                        try {
-                          const response = await fetch('/api/auth/forgot-password', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ email: loginData.email })
-                          });
+                    {!isRegisterMode && (
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          if (!loginData.email) {
+                            toast({ 
+                              title: "Error", 
+                              description: "Please enter your email address first",
+                              variant: "destructive" 
+                            });
+                            return;
+                          }
                           
-                          const data = await response.json();
-                          toast({ 
-                            title: "Success", 
-                            description: "Password reset link sent to your email!"
-                          });
-                        } catch (error) {
-                          toast({ 
-                            title: "Error", 
-                            description: "Failed to send reset email",
-                            variant: "destructive" 
-                          });
-                        }
-                      }}
-                      className="w-full"
+                          try {
+                            const response = await fetch('/api/auth/forgot-password', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ email: loginData.email })
+                            });
+                            
+                            const data = await response.json();
+                            toast({ 
+                              title: "Success", 
+                              description: "Password reset link sent to your email!"
+                            });
+                          } catch (error) {
+                            toast({ 
+                              title: "Error", 
+                              description: "Failed to send reset email",
+                              variant: "destructive" 
+                            });
+                          }
+                        }}
+                        className="w-full"
+                      >
+                        Forgot Password?
+                      </Button>
+                    )}
+                    <Button 
+                      variant="link" 
+                      className="text-slate-600"
+                      onClick={() => setIsRegisterMode(!isRegisterMode)}
                     >
-                      Forgot Password?
+                      {isRegisterMode ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
                     </Button>
                   </div>
                 </div>
