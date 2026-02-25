@@ -37,18 +37,29 @@ export default function MultiEmailInput({
 
   // Initialize emails from value prop
   useEffect(() => {
-    if (value) {
+    if (value !== undefined) {
       const emailList = value.split(',').map(email => email.trim()).filter(Boolean);
-      setEmails(emailList);
+      // Only update if the parsed list is actually different from current state
+      // This prevents the infinite loop when value is updated from parent
+      const currentEmailString = emails.join(', ');
+      const newValueString = emailList.join(', ');
+      
+      if (newValueString !== currentEmailString) {
+        setEmails(emailList);
+      }
     } else {
-      setEmails([]);
+      if (emails.length > 0) {
+        setEmails([]);
+      }
     }
   }, [value]);
 
   // Update parent when emails change
   useEffect(() => {
     const emailString = emails.join(', ');
-    if (emailString !== value) {
+    // Use a more robust comparison that ignores spacing around commas
+    const normalize = (s: string) => s.split(',').map(e => e.trim()).filter(Boolean).join(',');
+    if (value !== undefined && normalize(emailString) !== normalize(value)) {
       onChange(emailString);
     }
   }, [emails, onChange, value]);
