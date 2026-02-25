@@ -19,11 +19,18 @@ interface RegisterData {
 export function useAuth() {
   const queryClient = useQueryClient();
   
-  const { data: user, isLoading } = useQuery<User>({
+  const { data: user, isLoading, isError } = useQuery<User>({
     queryKey: ["/api/auth/user"],
     retry: false,
     enabled: !!localStorage.getItem('auth_token'),
+    staleTime: 0, // Ensure we always check the token
+    gcTime: 0,    // Don't cache stale auth state
   });
+
+  // Handle unauthorized error by clearing token
+  if (isError) {
+    localStorage.removeItem('auth_token');
+  }
 
   const loginMutation = useMutation({
     mutationFn: async (data: LoginData) => {

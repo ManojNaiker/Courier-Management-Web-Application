@@ -30,8 +30,9 @@ export default function Landing() {
 
     if (ssoToken) {
       localStorage.setItem('auth_token', ssoToken);
-      window.history.replaceState({}, '', '/');
+      queryClient.setQueryData(['/api/auth/user'], null);
       queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+      window.history.replaceState({}, '', '/');
       window.location.href = '/';
     }
 
