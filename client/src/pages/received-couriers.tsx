@@ -89,9 +89,12 @@ export default function ReceivedCouriers() {
     customDepartment: "",
     receiverName: "",
     emailId: "",
+    ccEmails: "",
     sendEmailNotification: false,
     remarks: "",
   });
+
+  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
   const [isOtherDepartment, setIsOtherDepartment] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // Default to today
   const [podError, setPodError] = useState<string>("");
@@ -257,6 +260,31 @@ export default function ReceivedCouriers() {
   const handleFromLocationChange = (value: string) => {
     setFormData({ ...formData, fromLocation: value });
   };
+
+  // Update email suggestions based on selected user or branch
+  useEffect(() => {
+    const suggestions: string[] = [];
+    
+    // Add emails from branches
+    if (branchesData) {
+      branchesData.forEach((branch: any) => {
+        if (branch.email && !suggestions.includes(branch.email)) {
+          suggestions.push(branch.email);
+        }
+      });
+    }
+
+    // Add emails from users
+    if (usersData) {
+      usersData.forEach((u: any) => {
+        if (u.email && !suggestions.includes(u.email)) {
+          suggestions.push(u.email);
+        }
+      });
+    }
+
+    setEmailSuggestions(suggestions);
+  }, [branchesData, usersData]);
 
   const resetForm = () => {
     setFormData({
@@ -702,22 +730,38 @@ export default function ReceivedCouriers() {
                   />
                 </div>
 
-                {/* Receiver Email (Now MultiEmailInput) */}
+                {/* Receiver Email with Suggestions */}
                 <div className="space-y-1">
                   <Label htmlFor="emailId" className="text-sm font-medium">Receiver Email(s)</Label>
-                  <MultiEmailInput
-                    id="emailId"
+                  <Autocomplete
+                    options={emailSuggestions}
                     value={formData.emailId || ""}
                     onChange={(value) => setFormData({ ...formData, emailId: value })}
-                    placeholder="Enter email(s) separated by commas"
+                    placeholder="Enter or select receiver email(s)"
                     className="h-9"
                     data-testid="input-receiver-email"
+                  />
+                  <div className="text-xs text-slate-500">
+                    💡 Typing will show suggestions from branches and users
+                  </div>
+                </div>
+
+                {/* CC Emails with Suggestions */}
+                <div className="space-y-1">
+                  <Label htmlFor="ccEmails" className="text-sm font-medium">CC Email(s)</Label>
+                  <Autocomplete
+                    options={emailSuggestions}
+                    value={(formData as any).ccEmails || ""}
+                    onChange={(value) => setFormData({ ...formData, ccEmails: value })}
+                    placeholder="Enter or select CC email(s)"
+                    className="h-9"
+                    data-testid="input-cc-email"
                   />
                   <div className="text-xs text-slate-500">
                     💡 Multiple emails allowed (comma separated)
                   </div>
                 </div>
-                
+
                 <div className="flex items-center space-x-2 pt-1">
                   <Checkbox 
                     id="sendEmail" 
