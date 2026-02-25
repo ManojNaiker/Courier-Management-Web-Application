@@ -516,45 +516,51 @@ export default function CourierTable({
       {/* View Courier Details Modal */}
       {viewingCourier && (
         <Dialog open={true} onOpenChange={() => setViewingCourier(null)}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Courier Details</DialogTitle>
             </DialogHeader>
             
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                 <div>
-                  <label className="text-sm font-medium text-gray-700">POD No.</label>
+                  <label className="text-sm font-semibold text-slate-600 block mb-1">POD No.</label>
                   <p className="text-sm text-gray-900">{viewingCourier.podNo || '-'}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">To Branch</label>
+                  <label className="text-sm font-semibold text-slate-600 block mb-1">To Branch</label>
                   <p className="text-sm text-gray-900">{viewingCourier.toBranch || '-'}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Email</label>
-                  <p className="text-sm text-gray-900">{viewingCourier.email || '-'}</p>
+                  <label className="text-sm font-semibold text-slate-600 block mb-1">Email</label>
+                  <p className="text-sm text-gray-900 break-all">{viewingCourier.email || '-'}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Vendor</label>
+                  <label className="text-sm font-semibold text-slate-600 block mb-1">Vendor</label>
                   <p className="text-sm text-gray-900">
                     {viewingCourier.vendor === 'Others' && viewingCourier.customVendor 
                       ? viewingCourier.customVendor 
                       : viewingCourier.vendor || '-'}
                   </p>
                 </div>
+                {viewingCourier.ccEmails && (
+                  <div className="col-span-2">
+                    <label className="text-sm font-semibold text-slate-600 block mb-1">CC Emails</label>
+                    <p className="text-sm text-gray-900 break-all">{viewingCourier.ccEmails}</p>
+                  </div>
+                )}
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Courier Date</label>
+                  <label className="text-sm font-semibold text-slate-600 block mb-1">Courier Date</label>
                   <p className="text-sm text-gray-900">
                     {viewingCourier.courierDate ? new Date(viewingCourier.courierDate).toLocaleDateString() : '-'}
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Status</label>
+                  <label className="text-sm font-semibold text-slate-600 block mb-1">Status</label>
                   <div className="mt-1">{getStatusBadge(viewingCourier.status)}</div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Department</label>
+                  <label className="text-sm font-semibold text-slate-600 block mb-1">Department</label>
                   <p className="text-sm text-gray-900">{viewingCourier.department?.name || 'N/A'}</p>
                 </div>
                 {viewingCourier.receiverName && (

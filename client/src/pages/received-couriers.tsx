@@ -92,6 +92,7 @@ export default function ReceivedCouriers() {
     sendEmailNotification: false,
     remarks: "",
   });
+  const [isOtherDepartment, setIsOtherDepartment] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // Default to today
   const [podError, setPodError] = useState<string>("");
 
@@ -272,12 +273,29 @@ export default function ReceivedCouriers() {
       sendEmailNotification: false,
       remarks: "",
     });
-    setSelectedDate(new Date()); // Reset to today
+    setIsOtherDepartment(false);
+    setSelectedDate(new Date());
     setPodError("");
   };
 
   const handleEdit = (courier: ReceivedCourier) => {
     setEditingCourier(courier);
+
+    const allEmails: string[] = [];
+    if (courier.emailId) {
+      courier.emailId.split(',').map(e => e.trim()).filter(Boolean).forEach(e => {
+        if (!allEmails.includes(e)) allEmails.push(e);
+      });
+    }
+    if ((courier as any).ccEmails) {
+      (courier as any).ccEmails.split(',').map((e: string) => e.trim()).filter(Boolean).forEach((e: string) => {
+        if (!allEmails.includes(e)) allEmails.push(e);
+      });
+    }
+
+    const hasDepartment = courier.departmentId !== null && courier.departmentId !== undefined;
+    setIsOtherDepartment(!hasDepartment && !!courier.customDepartment);
+
     setFormData({
       podNumber: courier.podNumber || "",
       receivedDate: courier.receivedDate || "",
@@ -285,10 +303,10 @@ export default function ReceivedCouriers() {
       toUser: courier.toUser || "",
       courierVendor: courier.courierVendor || "",
       customVendor: courier.customVendor || "",
-      departmentId: courier.departmentId || undefined,
+      departmentId: hasDepartment ? courier.departmentId : undefined,
       customDepartment: courier.customDepartment || "",
       receiverName: courier.receiverName || "",
-      emailId: courier.emailId || "",
+      emailId: allEmails.join(', '),
       sendEmailNotification: courier.sendEmailNotification || false,
       remarks: courier.remarks || "",
     });
@@ -397,7 +415,7 @@ export default function ReceivedCouriers() {
                     No received couriers found. Add your first received courier to get started.
                   </div>
                 ) : (
-                  <div className="max-h-96 overflow-y-auto">
+                  <div className="max-h-[600px] overflow-y-auto">
                     <Table>
                     <TableHeader>
                       <TableRow>
@@ -588,11 +606,13 @@ export default function ReceivedCouriers() {
                 <div className="space-y-1">
                   <Label htmlFor="department" className="text-sm font-medium">Related Department *</Label>
                   <Select
-                    value={formData.departmentId?.toString() || ""}
+                    value={isOtherDepartment ? "other" : (formData.departmentId?.toString() || "")}
                     onValueChange={(value) => {
                       if (value === "other") {
+                        setIsOtherDepartment(true);
                         setFormData({ ...formData, departmentId: undefined });
                       } else {
+                        setIsOtherDepartment(false);
                         setFormData({ ...formData, departmentId: parseInt(value), customDepartment: "" });
                       }
                     }}
@@ -611,8 +631,7 @@ export default function ReceivedCouriers() {
                   </Select>
                 </div>
                 
-                {/* Other Department */}
-                {formData.departmentId === undefined && (
+                {isOtherDepartment && (
                   <div className="space-y-1">
                     <Label htmlFor="customDepartment" className="text-sm font-medium">Other Department *</Label>
                     <Input
@@ -807,49 +826,74 @@ export default function ReceivedCouriers() {
       {/* View Details Modal */}
       {viewingCourier && (
         <Dialog open={!!viewingCourier} onOpenChange={() => setViewingCourier(null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Received Courier Details</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <span className="font-semibold">POD Number:</span>
-                <span>{viewingCourier.podNumber}</span>
+            <div className="space-y-5 py-4">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                <div>
+                  <span className="font-semibold text-slate-600 block mb-1">POD Number</span>
+                  <span className="text-slate-900">{viewingCourier.podNumber}</span>
+                </div>
                 
-                <span className="font-semibold">Received Date:</span>
-                <span>{viewingCourier.receivedDate ? formatDateDDMMYYYY(viewingCourier.receivedDate + 'T00:00:00') : '-'}</span>
+                <div>
+                  <span className="font-semibold text-slate-600 block mb-1">Received Date</span>
+                  <span className="text-slate-900">{viewingCourier.receivedDate ? formatDateDDMMYYYY(viewingCourier.receivedDate + 'T00:00:00') : '-'}</span>
+                </div>
                 
-                <span className="font-semibold">From:</span>
-                <span>{viewingCourier.fromLocation}</span>
+                <div>
+                  <span className="font-semibold text-slate-600 block mb-1">From</span>
+                  <span className="text-slate-900">{viewingCourier.fromLocation}</span>
+                </div>
                 
-                <span className="font-semibold">To User:</span>
-                <span>{viewingCourier.toUser || '-'}</span>
+                <div>
+                  <span className="font-semibold text-slate-600 block mb-1">To User</span>
+                  <span className="text-slate-900">{viewingCourier.toUser || '-'}</span>
+                </div>
                 
-                <span className="font-semibold">Department:</span>
-                <span>{viewingCourier.departmentName || viewingCourier.customDepartment || '-'}</span>
+                <div>
+                  <span className="font-semibold text-slate-600 block mb-1">Department</span>
+                  <span className="text-slate-900">{viewingCourier.departmentName || viewingCourier.customDepartment || '-'}</span>
+                </div>
                 
-                <span className="font-semibold">Receiver:</span>
-                <span>{viewingCourier.receiverName || '-'}</span>
+                <div>
+                  <span className="font-semibold text-slate-600 block mb-1">Receiver</span>
+                  <span className="text-slate-900">{viewingCourier.receiverName || '-'}</span>
+                </div>
                 
-                <span className="font-semibold">Vendor:</span>
-                <span>{viewingCourier.courierVendor === 'Others' ? viewingCourier.customVendor : viewingCourier.courierVendor}</span>
+                <div>
+                  <span className="font-semibold text-slate-600 block mb-1">Vendor</span>
+                  <span className="text-slate-900">{viewingCourier.courierVendor === 'Others' ? viewingCourier.customVendor : viewingCourier.courierVendor}</span>
+                </div>
                 
-                <span className="font-semibold">Email:</span>
-                <span>{viewingCourier.emailId || '-'}</span>
+                <div>
+                  <span className="font-semibold text-slate-600 block mb-1">Email</span>
+                  <span className="text-slate-900 break-all">{viewingCourier.emailId || '-'}</span>
+                </div>
                 
-                <span className="font-semibold">Status:</span>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                  viewingCourier.status === 'received' ? 'bg-green-100 text-green-800' : 
-                  viewingCourier.status === 'dispatched' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {viewingCourier.status === 'received' ? 'Email Sent' : 
-                   viewingCourier.status === 'dispatched' ? 'Dispatched' : 'Pending'}
-                </span>
+                {viewingCourier.ccEmails && (
+                  <div className="col-span-2">
+                    <span className="font-semibold text-slate-600 block mb-1">CC Emails</span>
+                    <span className="text-slate-900 break-all">{viewingCourier.ccEmails}</span>
+                  </div>
+                )}
+                
+                <div>
+                  <span className="font-semibold text-slate-600 block mb-1">Status</span>
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                    viewingCourier.status === 'received' ? 'bg-green-100 text-green-800' : 
+                    viewingCourier.status === 'dispatched' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {viewingCourier.status === 'received' ? 'Email Sent' : 
+                     viewingCourier.status === 'dispatched' ? 'Dispatched' : 'Pending'}
+                  </span>
+                </div>
               </div>
               
               <div className="space-y-1">
-                <span className="font-semibold text-sm">Remarks:</span>
-                <p className="text-sm p-2 bg-slate-50 rounded border">{viewingCourier.remarks || 'No remarks provided.'}</p>
+                <span className="font-semibold text-sm text-slate-600">Remarks</span>
+                <p className="text-sm p-3 bg-slate-50 rounded-lg border">{viewingCourier.remarks || 'No remarks provided.'}</p>
               </div>
             </div>
             <DialogFooter>
