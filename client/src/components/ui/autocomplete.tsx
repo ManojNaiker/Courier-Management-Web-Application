@@ -39,9 +39,9 @@ export function Autocomplete({
   useEffect(() => {
     // Show suggestions after 1 character is typed
     if (isOpen && value && value.length >= 1) {
-      const filtered = options.filter(option =>
-        option.label.toLowerCase().includes(value.toLowerCase()) ||
-        option.value.toLowerCase().includes(value.toLowerCase())
+      const filtered = (options || []).filter(option =>
+        option.label?.toLowerCase().includes(value.toLowerCase()) ||
+        option.value?.toLowerCase().includes(value.toLowerCase())
       );
       setFilteredOptions(filtered);
       setHighlightedIndex(-1);
@@ -104,7 +104,7 @@ export function Autocomplete({
         e.preventDefault();
         if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
           handleOptionSelect(filteredOptions[highlightedIndex]);
-        } else if (value && !options.find(opt => opt.value.toLowerCase() === value.toLowerCase()) && onAddNew) {
+        } else if (value && options && Array.isArray(options) && !options.find(opt => opt.value?.toLowerCase() === value.toLowerCase()) && onAddNew) {
           onAddNew(value);
           setIsOpen(false);
         }
@@ -126,9 +126,9 @@ export function Autocomplete({
     // When the input is focused, and the value has at least 2 characters, open the dropdown and show filtered options
     if (value && value.length >= 2) {
       setIsOpen(true);
-      const filtered = options.filter(option =>
-        option.label.toLowerCase().includes(value.toLowerCase()) ||
-        option.value.toLowerCase().includes(value.toLowerCase())
+      const filtered = (options || []).filter(option =>
+        option.label?.toLowerCase().includes(value.toLowerCase()) ||
+        option.value?.toLowerCase().includes(value.toLowerCase())
       );
       setFilteredOptions(filtered);
       setHighlightedIndex(-1);
@@ -138,13 +138,13 @@ export function Autocomplete({
       setIsOpen(true);
     } else {
       // If input is empty, show all options or handle as needed
-      setFilteredOptions(options); // Or setFilteredOptions([]) if you don't want to show anything initially
+      setFilteredOptions(options || []); // Or setFilteredOptions([]) if you don't want to show anything initially
       setIsOpen(true);
     }
   };
 
-  const showAddButton = value && 
-    !options.find(opt => opt.value.toLowerCase() === value.toLowerCase()) && 
+  const showAddButton = value && options && Array.isArray(options) && 
+    !options.find(opt => opt.value?.toLowerCase() === value.toLowerCase()) && 
     onAddNew;
 
   return (
@@ -170,7 +170,7 @@ export function Autocomplete({
           ) : filteredOptions.length > 0 ? (
             filteredOptions.map((option, index) => (
               <div
-                key={option.value}
+                key={`${option.value}-${index}`}
                 className={cn(
                   "px-3 py-2 cursor-pointer flex items-center justify-between",
                   "hover:bg-gray-100",

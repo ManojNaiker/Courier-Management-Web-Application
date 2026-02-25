@@ -266,18 +266,30 @@ export default function ReceivedCouriers() {
     const suggestions: string[] = [];
     
     // Add emails from branches
-    if (branchesData) {
-      branchesData.forEach((branch: any) => {
-        if (branch.email && !suggestions.includes(branch.email)) {
+    const actualBranches = Array.isArray(branchesData) 
+      ? branchesData 
+      : (branchesData && typeof branchesData === 'object' && Array.isArray((branchesData as any).branches))
+        ? (branchesData as any).branches
+        : [];
+
+    if (Array.isArray(actualBranches)) {
+      actualBranches.forEach((branch: any) => {
+        if (branch && branch.email && !suggestions.includes(branch.email)) {
           suggestions.push(branch.email);
         }
       });
     }
 
     // Add emails from users
-    if (usersData) {
-      usersData.forEach((u: any) => {
-        if (u.email && !suggestions.includes(u.email)) {
+    const actualUsers = Array.isArray(usersData)
+      ? usersData
+      : (usersData && typeof usersData === 'object' && Array.isArray((usersData as any).users))
+        ? (usersData as any).users
+        : [];
+
+    if (Array.isArray(actualUsers)) {
+      actualUsers.forEach((u: any) => {
+        if (u && u.email && !suggestions.includes(u.email)) {
           suggestions.push(u.email);
         }
       });
