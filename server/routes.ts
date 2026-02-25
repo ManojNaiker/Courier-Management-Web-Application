@@ -2693,7 +2693,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           <!-- Received Button -->
           <tr>
             <td style="padding:20px 24px;text-align:center;">
-              <a href="${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://localhost:5000'}/api/couriers/confirm-received?token=${confirmationToken}" 
+              <a href="${smtpSettings.applicationUrl || (req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host')}/api/couriers/confirm-received?token=${confirmationToken}" 
                  style="display:inline-block;background:#16a34a;color:#fff;padding:12px 32px;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;">
                 ✅ Click Here to Confirm Received
               </a>
@@ -4016,7 +4016,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           <!-- Received Button -->
           <tr>
             <td style="padding:20px 24px;text-align:center;">
-              <a href="${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://localhost:5000'}/api/received-couriers/confirm-received?token=${confirmationToken}" 
+              <a href="${smtpSettings.applicationUrl || (req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host')}/api/received-couriers/confirm-received?token=${confirmationToken}" 
                  style="display:inline-block;background:#16a34a;color:#fff;padding:12px 32px;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;">
                 ✅ Click Here to Confirm Received
               </a>
