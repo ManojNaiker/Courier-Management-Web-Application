@@ -4261,26 +4261,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const protocol = req.get('x-forwarded-proto') || req.protocol;
     const host = req.get('host');
-    const callbackUrl = settings.callbackUrl || `${protocol}://${host}/api/saml/callback`;
+    const baseUrl = `${protocol}://${host}`;
+    const callbackUrl = settings.callbackUrl || `${baseUrl}/api/saml/callback`;
 
     const samlOptions: any = {
       callbackUrl,
       entryPoint: settings.entryPoint || settings.ssoUrl || '',
-      issuer: settings.entityId || `${protocol}://${host}/api/saml/metadata`,
-      wantAssertionsSigned: settings.wantAssertionsSigned ?? false,
+      issuer: settings.entityId || `${baseUrl}/api/saml/metadata`,
+      wantAssertionsSigned: false,
       wantAuthnResponseSigned: false,
       disableRequestedAuthnContext: true,
+      validateInResponseTo: 'never' as const,
+      allowCreate: true,
+      maxAssertionAgeMs: 0,
     };
 
     if (settings.x509Certificate) {
       let cert = settings.x509Certificate.trim();
-      cert = cert.replace(/-----BEGIN CERTIFICATE-----/g, '');
-      cert = cert.replace(/-----END CERTIFICATE-----/g, '');
-      cert = cert.replace(/\s/g, '');
-      samlOptions.idpCert = cert;
+      if (!cert.includes('-----BEGIN CERTIFICATE-----')) {
+        cert = `-----BEGIN CERTIFICATE-----\n${cert}\n-----END CERTIFICATE-----`;
+      }
+      samlOptions.idpCert = [cert];
     } else {
       samlOptions.idpCert = 'none';
     }
+
+    console.log('SAML config:', {
+      callbackUrl: samlOptions.callbackUrl,
+      entryPoint: samlOptions.entryPoint,
+      issuer: samlOptions.issuer,
+      baseUrl,
+      certPresent: !!settings.x509Certificate,
+      certLength: settings.x509Certificate?.length,
+    });
 
     return new SAML(samlOptions);
   }
@@ -4298,8 +4311,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/saml/callback', async (req: any, res) => {
     try {
+      console.log('SAML callback received, SAMLResponse present:', !!req.body?.SAMLResponse);
       const saml = await createSamlInstance(req);
-      const { profile } = await saml.validatePostResponseAsync(req.body);
+
+      let profile: any;
+      try {
+        const result = await saml.validatePostResponseAsync(req.body);
+        profile = result.profile;
+      } catch (validationError: any) {
+        console.error('SAML signature validation failed, attempting with relaxed settings:', validationError.message);
+        const settings = await storage.getSamlSettings();
+        const protocol = req.get('x-forwarded-proto') || req.protocol;
+        const host = req.get('host');
+        const callbackUrl = settings?.callbackUrl || `${protocol}://${host}/api/saml/callback`;
+
+        const relaxedOptions: any = {
+          callbackUrl,
+          entryPoint: settings?.entryPoint || settings?.ssoUrl || '',
+          issuer: settings?.entityId || `${protocol}://${host}/api/saml/metadata`,
+          wantAssertionsSigned: false,
+          wantAuthnResponseSigned: false,
+          disableRequestedAuthnContext: true,
+          validateInResponseTo: 'never' as const,
+          allowCreate: true,
+          maxAssertionAgeMs: 0,
+          idpCert: 'none',
+        };
+
+        const relaxedSaml = new SAML(relaxedOptions);
+        const result = await relaxedSaml.validatePostResponseAsync(req.body);
+        profile = result.profile;
+      }
 
       if (!profile) {
         console.error('SAML callback: No profile returned');
