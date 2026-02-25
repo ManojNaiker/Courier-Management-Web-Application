@@ -17,6 +17,7 @@ import { FieldTransformations } from "./field-transformations";
 import Papa from "papaparse";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
+import { SAML } from "@node-saml/node-saml";
 
 // Configure multer for file uploads
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -4246,6 +4247,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.send(metadata);
     } catch (error) {
       res.status(500).send("Error generating metadata");
+    }
+  });
+
+  async function createSamlInstance(req: any) {
+    const settings = await storage.getSamlSettings();
+    if (!settings || !settings.enabled) {
+      throw new Error('SAML SSO is not enabled');
+    }
+    if (!settings.ssoUrl && !settings.entryPoint) {
+      throw new Error('SAML SSO URL or Entry Point is not configured');
+    }
+
+    const protocol = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.get('host');
+    const callbackUrl = settings.callbackUrl || `${protocol}://${host}/api/saml/callback`;
+
+    const samlOptions: any = {
+      callbackUrl,
+      entryPoint: settings.entryPoint || settings.ssoUrl || '',
+      issuer: settings.entityId || `${protocol}://${host}/api/saml/metadata`,
+      wantAssertionsSigned: settings.wantAssertionsSigned ?? false,
+      wantAuthnResponseSigned: false,
+      disableRequestedAuthnContext: true,
+    };
+
+    if (settings.x509Certificate) {
+      let cert = settings.x509Certificate.trim();
+      cert = cert.replace(/-----BEGIN CERTIFICATE-----/g, '');
+      cert = cert.replace(/-----END CERTIFICATE-----/g, '');
+      cert = cert.replace(/\s/g, '');
+      samlOptions.idpCert = cert;
+    } else {
+      samlOptions.idpCert = 'none';
+    }
+
+    return new SAML(samlOptions);
+  }
+
+  app.get('/api/saml/login', async (req: any, res) => {
+    try {
+      const saml = await createSamlInstance(req);
+      const loginUrl = await saml.getAuthorizeUrlAsync('', req.headers.host || '', {});
+      res.redirect(loginUrl);
+    } catch (error: any) {
+      console.error('SAML login error:', error);
+      res.redirect(`/?ssoError=${encodeURIComponent(error.message || 'SSO login failed')}`);
+    }
+  });
+
+  app.post('/api/saml/callback', async (req: any, res) => {
+    try {
+      const saml = await createSamlInstance(req);
+      const { profile } = await saml.validatePostResponseAsync(req.body);
+
+      if (!profile) {
+        console.error('SAML callback: No profile returned');
+        return res.redirect('/?ssoError=' + encodeURIComponent('No user profile returned from SSO'));
+      }
+
+      const email = profile.nameID || profile.email || (profile as any)['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress'] || '';
+      const firstName = (profile as any).firstName || (profile as any)['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname'] || '';
+      const lastName = (profile as any).lastName || (profile as any)['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname'] || '';
+      const displayName = (profile as any).displayName || (profile as any)['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'] || '';
+
+      if (!email) {
+        console.error('SAML callback: No email in profile', profile);
+        return res.redirect('/?ssoError=' + encodeURIComponent('No email address returned from SSO provider'));
+      }
+
+      let user = await storage.getUserByEmail(email);
+
+      if (!user) {
+        const name = displayName || `${firstName} ${lastName}`.trim() || email.split('@')[0];
+        const tempPassword = crypto.randomBytes(32).toString('hex');
+        const hashedPassword = await hashPassword(tempPassword);
+
+        user = await storage.createUser({
+          name,
+          email,
+          password: hashedPassword,
+          role: 'user',
+        });
+      }
+
+      const token = generateToken({
+        userId: String(user.id),
+        email: user.email!,
+        role: user.role || 'user',
+      });
+
+      await logAudit(String(user.id), 'SSO_LOGIN', 'user', String(user.id), user.email || undefined, `SSO login via SAML`);
+
+      res.redirect(`/?ssoToken=${token}`);
+    } catch (error: any) {
+      console.error('SAML callback error:', error);
+      res.redirect(`/?ssoError=${encodeURIComponent(error.message || 'SSO authentication failed')}`);
     }
   });
 

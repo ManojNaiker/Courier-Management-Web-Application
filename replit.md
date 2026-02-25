@@ -47,7 +47,8 @@ Preferred communication style: Simple, everyday language.
 ### Backend Architecture
 - **Runtime**: Node.js with Express.js framework using ES modules
 - **Database**: PostgreSQL with Drizzle ORM for type-safe database operations
-- **Authentication**: OpenID Connect integration with Replit Auth for secure user authentication
+- **Authentication**: Dual auth system — JWT-based local login and SAML SSO via `@node-saml/node-saml`
+- **SAML SSO Flow**: `/api/saml/login` generates AuthnRequest → IdP authenticates → `/api/saml/callback` validates response, creates/finds user, issues JWT token → redirects to `/?ssoToken=...` → frontend stores token
 - **Session Management**: Express sessions with PostgreSQL store for persistent user sessions
 - **File Handling**: Multer middleware for file uploads (POD documents)
 - **API Design**: RESTful API structure with consistent error handling

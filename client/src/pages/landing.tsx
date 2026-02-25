@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,11 +9,10 @@ import { Building2, Package, Users, BarChart3 } from "lucide-react";
 import lightLogo from "../assets/light-logo.png";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export default function Landing() {
   const [showLogin, setShowLogin] = useState(() => {
-    // Auto-open login dialog if redirected from logout
     return new URLSearchParams(window.location.search).get('showLogin') === 'true';
   });
   const [loginData, setLoginData] = useState({ email: "", password: "", useTempUser: false });
@@ -22,14 +21,37 @@ export default function Landing() {
   
   const { login, register, isLoginLoading, isRegisterLoading } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ssoToken = params.get('ssoToken');
+    const ssoError = params.get('ssoError');
+
+    if (ssoToken) {
+      localStorage.setItem('auth_token', ssoToken);
+      window.history.replaceState({}, '', '/');
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+      window.location.href = '/';
+    }
+
+    if (ssoError) {
+      toast({
+        title: "SSO Login Failed",
+        description: decodeURIComponent(ssoError),
+        variant: "destructive"
+      });
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
 
   const { data: samlSettings } = useQuery<any>({
     queryKey: ['/api/saml-settings-public'],
   });
 
   const handleSamlLogin = () => {
-    if (samlSettings?.enabled && samlSettings?.entryPoint) {
-      window.location.href = samlSettings.entryPoint;
+    if (samlSettings?.enabled) {
+      window.location.href = '/api/saml/login';
     } else {
       toast({
         title: "SSO Not Configured",
