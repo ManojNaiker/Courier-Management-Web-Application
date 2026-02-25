@@ -335,20 +335,6 @@ export default function ReceivedCouriers() {
   const handleEdit = (courier: ReceivedCourier) => {
     setEditingCourier(courier);
 
-    const allEmails: string[] = [];
-    if (courier.emailId) {
-      courier.emailId.split(',').map(e => e.trim()).filter(Boolean).forEach(e => {
-        if (!allEmails.includes(e)) allEmails.push(e);
-      });
-    }
-    // Remove duplication check for CC emails if it's already handled in the component
-    const ccEmails = (courier as any).ccEmails;
-    if (ccEmails) {
-      ccEmails.split(',').map((e: string) => e.trim()).filter(Boolean).forEach((e: string) => {
-        if (!allEmails.includes(e)) allEmails.push(e);
-      });
-    }
-
     const hasDepartment = courier.departmentId !== null && courier.departmentId !== undefined;
     setIsOtherDepartment(!hasDepartment && !!courier.customDepartment);
 
@@ -362,7 +348,7 @@ export default function ReceivedCouriers() {
       departmentId: hasDepartment ? courier.departmentId : undefined,
       customDepartment: courier.customDepartment || "",
       receiverName: courier.receiverName || "",
-      emailId: allEmails.join(', '),
+      emailId: courier.emailId || "",
       sendEmailNotification: courier.sendEmailNotification || false,
       remarks: courier.remarks || "",
     });
