@@ -37,9 +37,8 @@ function Router() {
     <Switch>
       {!isAuthenticated ? (
         <>
-          <Route path="/" component={Landing} />
-          <Route path="/login" component={Landing} />
           <Route path="/reset-password" component={ResetPassword} />
+          <Route component={Landing} />
         </>
       ) : (
         <AppLayout>
