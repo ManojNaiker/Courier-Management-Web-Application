@@ -40,7 +40,7 @@ export default function Dashboard() {
   return (
     <main className="flex-1 relative overflow-y-auto focus:outline-none">
       <div className="py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+        <div className="w-full px-4 sm:px-6 md:px-8">
           {/* Page Header */}
           <div className="md:flex md:items-center md:justify-between">
             <div className="flex-1 min-w-0">

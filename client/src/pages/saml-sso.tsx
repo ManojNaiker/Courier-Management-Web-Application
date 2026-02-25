@@ -95,7 +95,7 @@ import { apiRequest } from "@/lib/queryClient";
     return (
       <main className="flex-1 relative overflow-y-auto focus:outline-none">
         <div className="py-6">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+          <div className="w-full px-4 sm:px-6 md:px-8">
             <div className="text-center py-8">Loading SAML settings...</div>
           </div>
         </div>
@@ -106,7 +106,7 @@ import { apiRequest } from "@/lib/queryClient";
   return (
     <main className="flex-1 relative overflow-y-auto focus:outline-none">
       <div className="py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+        <div className="w-full px-4 sm:px-6 md:px-8">
           <div className="mb-8">
             <h1 className="text-2xl font-semibold text-slate-900">SAML SSO Configuration</h1>
             <p className="mt-2 text-sm text-slate-700">

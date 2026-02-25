@@ -464,7 +464,7 @@ export default function Branches() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-6 px-4 sm:px-6 md:px-8 py-6">
       {/* Page Header */}
       <div className="flex justify-between items-center">
         <div>

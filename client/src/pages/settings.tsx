@@ -820,7 +820,7 @@ export default function Settings() {
   return (
     <main className="flex-1 relative overflow-y-auto focus:outline-none">
       <div className="py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+        <div className="w-full px-4 sm:px-6 md:px-8">
           {/* Page Header */}
           <div className="flex-1 min-w-0 mb-8">
             <h2 className="text-2xl font-bold leading-7 text-slate-900 sm:text-3xl sm:truncate">
