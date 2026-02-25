@@ -201,18 +201,7 @@ export default function Landing() {
                       }}
                     />
                   </div>
-                  {!isRegisterMode && (
-                    <div className="flex items-center space-x-2 mt-2">
-                      <Checkbox 
-                        id="useTempUser" 
-                        checked={loginData.useTempUser}
-                        onCheckedChange={(checked) => setLoginData({ ...loginData, useTempUser: checked as boolean })}
-                      />
-                      <Label htmlFor="useTempUser" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
-                        Use temporary account (CSV)
-                      </Label>
-                    </div>
-                  )}
+                  {/* Temporary account option removed */}
                   <div className="flex flex-col gap-3">
                     <Button
                       onClick={isRegisterMode ? handleRegister : handleLogin}
@@ -259,9 +248,10 @@ export default function Landing() {
                         Forgot Password?
                       </Button>
                     )}
+                    {/* Sign Up button removed */}
                     <Button 
                       variant="link" 
-                      className="text-slate-600"
+                      className="text-slate-600 invisible"
                       onClick={() => setIsRegisterMode(!isRegisterMode)}
                     >
                       {isRegisterMode ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
