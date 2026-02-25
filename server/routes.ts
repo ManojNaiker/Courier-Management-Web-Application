@@ -3657,6 +3657,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/received-couriers/:id", authenticateToken, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const courier = await storage.getReceivedCourierById(id);
+      if (!courier) {
+        return res.status(404).json({ message: "Received courier not found" });
+      }
+      res.json(courier);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/received-couriers/:id", authenticateToken, requireRole(['admin']), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertReceivedCourierSchema.partial().parse(req.body);
+      const updated = await storage.updateReceivedCourier(id, validatedData);
+      if (!updated) {
+        return res.status(404).json({ message: "Received courier not found" });
+      }
+      
+      const user = req.user as any;
+      await logAudit(user.id, 'UPDATE', 'received_courier', id.toString(), updated.emailId || undefined, `Updated received courier POD: ${updated.podNumber}`);
+      
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/received-couriers/:id", authenticateToken, requireRole(['admin']), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const courier = await storage.getReceivedCourierById(id);
+      if (!courier) {
+        return res.status(404).json({ message: "Received courier not found" });
+      }
+      
+      const success = await storage.deleteReceivedCourier(id);
+      if (success) {
+        const user = req.user as any;
+        await logAudit(user.id, 'DELETE', 'received_courier', id.toString(), courier.emailId || undefined, `Deleted received courier POD: ${courier.podNumber}`);
+        res.status(204).end();
+      } else {
+        res.status(500).json({ message: "Failed to delete received courier" });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post('/api/received-couriers', authenticateToken, async (req: any, res) => {
     try {
       const userId = req.user.id;

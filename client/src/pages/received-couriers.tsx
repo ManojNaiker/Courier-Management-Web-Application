@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Plus, Mail, Eye, AlertTriangle } from "lucide-react";
+import { Plus, Mail, Eye, AlertTriangle, Edit2, Trash2 } from "lucide-react";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import MultiEmailInput from "@/components/ui/multi-email-input";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,7 +22,18 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,6 +74,8 @@ export default function ReceivedCouriers() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [editingCourier, setEditingCourier] = useState<ReceivedCourier | null>(null);
+  const [deletingCourierId, setDeletingCourierId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewingCourier, setViewingCourier] = useState<any>(null);
   const [formData, setFormData] = useState<Partial<InsertReceivedCourier>>({
@@ -81,6 +94,8 @@ export default function ReceivedCouriers() {
   });
   const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // Default to today
   const [podError, setPodError] = useState<string>("");
+
+  const isAdmin = user?.role === 'admin';
 
   // Redirect to home if not authenticated
   useEffect(() => {
@@ -161,6 +176,37 @@ export default function ReceivedCouriers() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertReceivedCourier> }) => {
+      const res = await apiRequest('PATCH', `/api/received-couriers/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/received-couriers'] });
+      toast({ title: "Success", description: "Received courier updated successfully" });
+      setShowForm(false);
+      setEditingCourier(null);
+      resetForm();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update received courier", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest('DELETE', `/api/received-couriers/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/received-couriers'] });
+      toast({ title: "Success", description: "Received courier deleted successfully" });
+      setDeletingCourierId(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete received courier", variant: "destructive" });
+    },
+  });
+
   const dispatchMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest('POST', `/api/received-couriers/${id}/dispatch`, {});
@@ -183,7 +229,7 @@ export default function ReceivedCouriers() {
   });
 
   // POD number validation function
-  const checkDuplicatePOD = async (podNumber: string) => {
+  const checkDuplicatePOD = async (podNumber: string, currentId?: number) => {
     if (!podNumber.trim()) {
       setPodError("");
       return;
@@ -193,7 +239,7 @@ export default function ReceivedCouriers() {
       const response = await apiRequest('GET', `/api/received-couriers`);
       const data = await response.json();
       const existingPOD = data.find((courier: any) => 
-        courier.podNumber?.toLowerCase() === podNumber.toLowerCase()
+        courier.podNumber?.toLowerCase() === podNumber.toLowerCase() && courier.id !== currentId
       );
       
       if (existingPOD) {
@@ -230,6 +276,28 @@ export default function ReceivedCouriers() {
     setPodError("");
   };
 
+  const handleEdit = (courier: ReceivedCourier) => {
+    setEditingCourier(courier);
+    setFormData({
+      podNumber: courier.podNumber || "",
+      receivedDate: courier.receivedDate || "",
+      fromLocation: courier.fromLocation || "",
+      toUser: courier.toUser || "",
+      courierVendor: courier.courierVendor || "",
+      customVendor: courier.customVendor || "",
+      departmentId: courier.departmentId || undefined,
+      customDepartment: courier.customDepartment || "",
+      receiverName: courier.receiverName || "",
+      emailId: courier.emailId || "",
+      sendEmailNotification: courier.sendEmailNotification || false,
+      remarks: courier.remarks || "",
+    });
+    if (courier.receivedDate) {
+      setSelectedDate(new Date(courier.receivedDate));
+    }
+    setShowForm(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -252,10 +320,14 @@ export default function ReceivedCouriers() {
       ...formData,
       receivedDate: format(selectedDate, "yyyy-MM-dd"),
       createdBy: (user as User)?.id,
-      departmentId: null, // Will be assigned based on user's department or admin selection
+      departmentId: formData.departmentId || null,
     } as InsertReceivedCourier;
 
-    createMutation.mutate(submitData);
+    if (editingCourier) {
+      updateMutation.mutate({ id: editingCourier.id, data: submitData });
+    } else {
+      createMutation.mutate(submitData);
+    }
   };
 
   // Note: User can manually add their own email using the autocomplete suggestions
@@ -284,7 +356,11 @@ export default function ReceivedCouriers() {
             </div>
             <div className="mt-4 flex md:mt-0 md:ml-4">
               <Button 
-                onClick={() => setShowForm(true)}
+                onClick={() => {
+                  setEditingCourier(null);
+                  resetForm();
+                  setShowForm(true);
+                }}
                 data-testid="button-add-received-courier"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -388,7 +464,7 @@ export default function ReceivedCouriers() {
                             {courier.remarks || '-'}
                           </TableCell>
                           <TableCell data-testid={`actions-${courier.id}`}>
-                            <div className="flex gap-2">
+                            <div className="flex gap-1">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -398,6 +474,29 @@ export default function ReceivedCouriers() {
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
+
+                              {isAdmin && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleEdit(courier)}
+                                    data-testid={`button-edit-${courier.id}`}
+                                    className="text-amber-600 border-amber-600 hover:bg-amber-50"
+                                  >
+                                    <Edit2 className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setDeletingCourierId(courier.id)}
+                                    data-testid={`button-delete-${courier.id}`}
+                                    className="text-red-600 border-red-600 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
                               
                               {(courier as any).emailId && (courier as any).status !== 'dispatched' && (courier as any).status !== 'received' && (
                                 <Button
@@ -426,11 +525,13 @@ export default function ReceivedCouriers() {
         </div>
       </div>
 
-      {/* Add Received Courier Modal */}
+      {/* Add/Edit Received Courier Modal */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Add Received Courier</DialogTitle>
+            <DialogTitle className="text-lg font-semibold">
+              {editingCourier ? "Edit Received Courier" : "Add Received Courier"}
+            </DialogTitle>
           </DialogHeader>
           
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -447,9 +548,9 @@ export default function ReceivedCouriers() {
                     value={formData.podNumber || ""}
                     onChange={(e) => {
                       setFormData({ ...formData, podNumber: e.target.value });
-                      checkDuplicatePOD(e.target.value);
+                      checkDuplicatePOD(e.target.value, editingCourier?.id);
                     }}
-                    onBlur={(e) => checkDuplicatePOD(e.target.value)}
+                    onBlur={(e) => checkDuplicatePOD(e.target.value, editingCourier?.id)}
                     placeholder="Enter POD Number"
                     className={cn("h-9", podError && "border-red-500")}
                     required
@@ -563,55 +664,11 @@ export default function ReceivedCouriers() {
                     id="toUser"
                     value={formData.toUser || ""}
                     onChange={(e) => setFormData({ ...formData, toUser: e.target.value })}
-                    placeholder="Enter recipient name"
+                    placeholder="Enter recipient user name"
                     className="h-9"
                     data-testid="input-to-user"
                   />
                 </div>
-              </div>
-
-              {/* Courier & Delivery Details Group */}
-              <div className="space-y-3 p-3 bg-orange-50 rounded-lg border">
-                <h4 className="text-sm font-semibold text-orange-700 mb-2">📦 Courier Details</h4>
-                
-                {/* Courier Vendor */}
-                <div className="space-y-1">
-                  <Label htmlFor="courierVendor" className="text-sm font-medium">Courier Vendor *</Label>
-                  <Select
-                    value={formData.courierVendor || ""}
-                    onValueChange={(value) => setFormData({ ...formData, courierVendor: value })}
-                  >
-                    <SelectTrigger className="h-9" data-testid="select-courier-vendor">
-                      <SelectValue placeholder="Select vendor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Maruti Courier">Maruti Courier</SelectItem>
-                      <SelectItem value="India Post">India Post</SelectItem>
-                      <SelectItem value="Professional Couriers">Professional Couriers</SelectItem>
-                      <SelectItem value="Blue Dart">Blue Dart</SelectItem>
-                      <SelectItem value="DHL Express">DHL Express</SelectItem>
-                      <SelectItem value="FedEx">FedEx</SelectItem>
-                      <SelectItem value="DTDC">DTDC</SelectItem>
-                      <SelectItem value="Others">Others</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Custom Vendor Field (when "Others" is selected) */}
-                {formData.courierVendor === "Others" && (
-                  <div className="space-y-1">
-                    <Label htmlFor="customVendor" className="text-sm font-medium">Custom Vendor Name *</Label>
-                    <Input
-                      id="customVendor"
-                      value={formData.customVendor || ""}
-                      onChange={(e) => setFormData({ ...formData, customVendor: e.target.value })}
-                      placeholder="Enter vendor name"
-                      className="h-9"
-                      required
-                      data-testid="input-custom-courier-vendor"
-                    />
-                  </div>
-                )}
 
                 {/* Receiver Name */}
                 <div className="space-y-1">
@@ -620,82 +677,81 @@ export default function ReceivedCouriers() {
                     id="receiverName"
                     value={formData.receiverName || ""}
                     onChange={(e) => setFormData({ ...formData, receiverName: e.target.value })}
-                    placeholder="Name of person receiving"
+                    placeholder="Enter person who received it"
                     className="h-9"
                     data-testid="input-receiver-name"
                   />
                 </div>
-              </div>
 
-              {/* Notification Settings Group */}
-              <div className="space-y-3 p-3 bg-purple-50 rounded-lg border">
-                <h4 className="text-sm font-semibold text-purple-700 mb-2">📧 Notification Settings</h4>
-                
-                {/* Multiple Email IDs with suggestions */}
+                {/* Receiver Email (Now MultiEmailInput) */}
                 <div className="space-y-1">
-                  <Label htmlFor="emailId" className="text-sm font-medium">Email IDs</Label>
+                  <Label htmlFor="emailId" className="text-sm font-medium">Receiver Email(s)</Label>
                   <MultiEmailInput
+                    id="emailId"
                     value={formData.emailId || ""}
-                    onChange={(value) => setFormData({ ...formData, emailId: value, sendEmailNotification: value ? true : false })}
-                    suggestions={[
-                      ...(branchesData?.branches || [])
-                        .filter((branch: any) => branch.email)
-                        .map((branch: any) => ({
-                          email: branch.email,
-                          name: branch.branchName,
-                          type: 'branch' as const
-                        })),
-                      ...(usersData?.users || [])
-                        .filter((user: any) => user.email)
-                        .map((user: any) => ({
-                          email: user.email,
-                          name: user.name || 'User',
-                          type: 'user' as const
-                        }))
-                    ]}
-                    placeholder="Type email addresses..."
-                    data-testid="multi-email-input"
+                    onChange={(value) => setFormData({ ...formData, emailId: value })}
+                    placeholder="Enter email(s) separated by commas"
+                    className="h-9"
+                    data-testid="input-receiver-email"
                   />
-                  {formData.emailId && (
-                    <div className="text-xs text-green-600">
-                      ✅ Multiple email recipients selected
-                    </div>
-                  )}
                   <div className="text-xs text-slate-500">
-                    💡 Type to see suggestions, press Enter or comma to add emails
+                    💡 Multiple emails allowed (comma separated)
                   </div>
                 </div>
-
-                {/* Enhanced Email Notification Options */}
-                {formData.emailId && (
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="sendNotification"
-                        checked={formData.sendEmailNotification || false}
-                        onCheckedChange={(checked) => 
-                          setFormData({ ...formData, sendEmailNotification: !!checked })
-                        }
-                        data-testid="checkbox-send-notification"
-                      />
-                      <Label htmlFor="sendNotification" className="text-sm">
-                        📨 Send confirmation email notification
-                      </Label>
-                    </div>
-                    
-                    {formData.sendEmailNotification && (
-                      <div className="ml-6 p-2 bg-blue-100 rounded text-xs text-blue-700">
-                        <strong>Email will include:</strong> POD confirmation, delivery details, and tracking information
-                      </div>
-                    )}
-                  </div>
-                )}
+                
+                <div className="flex items-center space-x-2 pt-1">
+                  <Checkbox 
+                    id="sendEmail" 
+                    checked={formData.sendEmailNotification}
+                    onCheckedChange={(checked) => setFormData({ ...formData, sendEmailNotification: checked as boolean })}
+                    data-testid="checkbox-send-email"
+                  />
+                  <Label htmlFor="sendEmail" className="text-sm font-medium cursor-pointer">
+                    Send email notification to recipient(s)
+                  </Label>
+                </div>
               </div>
 
-              {/* Additional Notes Group */}
-              <div className="space-y-3 p-3 bg-gray-50 rounded-lg border">
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">📝 Additional Information</h4>
+              {/* Courier Vendor and Remarks Group */}
+              <div className="space-y-3 p-3 bg-orange-50 rounded-lg border">
+                <h4 className="text-sm font-semibold text-orange-700 mb-2">📦 Courier Details</h4>
                 
+                {/* Courier Vendor */}
+                <div className="space-y-1">
+                  <Label htmlFor="courierVendor" className="text-sm font-medium">Courier Vendor *</Label>
+                  <Select
+                    value={formData.courierVendor || ""}
+                    onValueChange={(value) => setFormData({ ...formData, courierVendor: value, customVendor: value === "Others" ? "" : undefined })}
+                  >
+                    <SelectTrigger className="h-9" data-testid="select-vendor">
+                      <SelectValue placeholder="Select vendor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Bluedart">Bluedart</SelectItem>
+                      <SelectItem value="DTDC">DTDC</SelectItem>
+                      <SelectItem value="Professional">Professional</SelectItem>
+                      <SelectItem value="Trackon">Trackon</SelectItem>
+                      <SelectItem value="Others">Others</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Custom Vendor */}
+                {formData.courierVendor === "Others" && (
+                  <div className="space-y-1">
+                    <Label htmlFor="customVendor" className="text-sm font-medium">Custom Vendor *</Label>
+                    <Input
+                      id="customVendor"
+                      value={formData.customVendor || ""}
+                      onChange={(e) => setFormData({ ...formData, customVendor: e.target.value })}
+                      placeholder="Enter courier vendor name"
+                      className="h-9"
+                      required
+                      data-testid="input-custom-vendor"
+                    />
+                  </div>
+                )}
+
                 {/* Remarks */}
                 <div className="space-y-1">
                   <Label htmlFor="remarks" className="text-sm font-medium">Remarks</Label>
@@ -703,146 +759,105 @@ export default function ReceivedCouriers() {
                     id="remarks"
                     value={formData.remarks || ""}
                     onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                    placeholder="Optional remarks..."
-                    rows={3}
-                    className="resize-none text-sm"
+                    placeholder="Any additional notes..."
+                    className="min-h-[80px]"
                     data-testid="textarea-remarks"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setShowForm(false);
-                  resetForm();
-                }}
-                className="px-4 py-2 text-sm"
-                data-testid="button-cancel"
-              >
+            <DialogFooter className="pt-4 border-t sticky bottom-0 bg-white">
+              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
                 Cancel
               </Button>
               <Button 
                 type="submit" 
-                disabled={createMutation.isPending}
-                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700"
-                data-testid="button-submit"
+                disabled={createMutation.isPending || updateMutation.isPending}
+                data-testid="button-save-received-courier"
               >
-                {createMutation.isPending ? "Adding..." : "Add Received Courier"}
+                {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingCourier ? "Update Courier" : "Save Courier"}
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* View Courier Details Dialog */}
-      <Dialog open={!!viewingCourier} onOpenChange={() => setViewingCourier(null)}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Received Courier Details</DialogTitle>
-          </DialogHeader>
-          
-          {viewingCourier && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="font-semibold">POD Number</Label>
-                  <p className="text-sm">{viewingCourier.podNumber || 'N/A'}</p>
-                </div>
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deletingCourierId !== null} onOpenChange={(open) => !open && setDeletingCourierId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the received courier record.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => deletingCourierId && deleteMutation.mutate(deletingCourierId)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* View Details Modal */}
+      {viewingCourier && (
+        <Dialog open={!!viewingCourier} onOpenChange={() => setViewingCourier(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Received Courier Details</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <span className="font-semibold">POD Number:</span>
+                <span>{viewingCourier.podNumber}</span>
                 
-                <div>
-                  <Label className="font-semibold">Status</Label>
-                  <div className="flex flex-col gap-1 mt-1">
-                    <span className={`inline-flex items-center w-fit px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      viewingCourier.status === 'received' 
-                        ? 'bg-green-100 text-green-800' 
-                        : viewingCourier.status === 'dispatched'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {viewingCourier.status === 'received' ? 'Confirmed Received' : 
-                       viewingCourier.status === 'dispatched' ? 'Dispatched' : 'Pending'}
-                    </span>
-                    {viewingCourier.status === 'received' && (
-                      <span className="text-xs text-green-600 font-medium">
-                        ✅ Confirmed via Email Link
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <span className="font-semibold">Received Date:</span>
+                <span>{viewingCourier.receivedDate ? formatDateDDMMYYYY(viewingCourier.receivedDate + 'T00:00:00') : '-'}</span>
                 
-                <div>
-                  <Label className="font-semibold">From Location</Label>
-                  <p className="text-sm">{viewingCourier.fromLocation || 'N/A'}</p>
-                </div>
+                <span className="font-semibold">From:</span>
+                <span>{viewingCourier.fromLocation}</span>
                 
-                <div>
-                  <Label className="font-semibold">Received Date</Label>
-                  <p className="text-sm">
-                    {viewingCourier.receivedDate ? new Date(viewingCourier.receivedDate + 'T00:00:00').toLocaleDateString() : 'N/A'}
-                  </p>
-                </div>
+                <span className="font-semibold">To User:</span>
+                <span>{viewingCourier.toUser || '-'}</span>
                 
-                <div>
-                  <Label className="font-semibold">Courier Vendor</Label>
-                  <p className="text-sm">
-                    {viewingCourier.courierVendor === 'Others' && viewingCourier.customVendor 
-                      ? viewingCourier.customVendor 
-                      : viewingCourier.courierVendor || 'N/A'}
-                  </p>
-                </div>
+                <span className="font-semibold">Department:</span>
+                <span>{viewingCourier.departmentName || viewingCourier.customDepartment || '-'}</span>
                 
-                <div>
-                  <Label className="font-semibold">Receiver Name</Label>
-                  <p className="text-sm">{viewingCourier.receiverName || 'N/A'}</p>
-                </div>
+                <span className="font-semibold">Receiver:</span>
+                <span>{viewingCourier.receiverName || '-'}</span>
                 
-                <div>
-                  <Label className="font-semibold">Email ID</Label>
-                  <p className="text-sm">{viewingCourier.emailId || 'N/A'}</p>
-                </div>
+                <span className="font-semibold">Vendor:</span>
+                <span>{viewingCourier.courierVendor === 'Others' ? viewingCourier.customVendor : viewingCourier.courierVendor}</span>
                 
-                <div>
-                  <Label className="font-semibold">Department</Label>
-                  <p className="text-sm">{viewingCourier.departmentName || viewingCourier.customDepartment || 'N/A'}</p>
-                </div>
+                <span className="font-semibold">Email:</span>
+                <span>{viewingCourier.emailId || '-'}</span>
+                
+                <span className="font-semibold">Status:</span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                  viewingCourier.status === 'received' ? 'bg-green-100 text-green-800' : 
+                  viewingCourier.status === 'dispatched' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {viewingCourier.status === 'received' ? 'Email Sent' : 
+                   viewingCourier.status === 'dispatched' ? 'Dispatched' : 'Pending'}
+                </span>
               </div>
               
-              {viewingCourier.remarks && (
-                <div>
-                  <Label className="font-semibold">Remarks</Label>
-                  <p className="text-sm">{viewingCourier.remarks}</p>
-                </div>
-              )}
-              
-              {viewingCourier.status === 'received' && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <h4 className="font-semibold text-green-800 mb-2">Email Confirmation Details</h4>
-                  <div className="text-sm text-green-700">
-                    <p>✅ Recipient confirmed receipt via email link</p>
-                    <p>📧 Confirmation sent to: {viewingCourier.emailId}</p>
-                    <p>📅 Last updated: {viewingCourier.updatedAt ? new Date(viewingCourier.updatedAt).toLocaleString() : 'N/A'}</p>
-                  </div>
-                </div>
-              )}
-              
-              {viewingCourier.status === 'dispatched' && viewingCourier.emailId && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-semibold text-blue-800 mb-2">Dispatch Details</h4>
-                  <div className="text-sm text-blue-700">
-                    <p>📤 Courier has been dispatched</p>
-                    <p>📧 Notification sent to: {viewingCourier.emailId}</p>
-                    <p>⏳ Awaiting email confirmation of receipt</p>
-                  </div>
-                </div>
-              )}
+              <div className="space-y-1">
+                <span className="font-semibold text-sm">Remarks:</span>
+                <p className="text-sm p-2 bg-slate-50 rounded border">{viewingCourier.remarks || 'No remarks provided.'}</p>
+              </div>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button onClick={() => setViewingCourier(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </main>
   );
 }
