@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { X, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,8 @@ interface MultiEmailInputProps {
   'data-testid'?: string;
 }
 
+const normalize = (s: string) => s ? s.split(',').map(e => e.trim()).filter(Boolean).join(',') : '';
+
 export default function MultiEmailInput({
   value,
   onChange,
@@ -27,45 +29,39 @@ export default function MultiEmailInput({
   disabled = false,
   'data-testid': testId,
 }: MultiEmailInputProps) {
-  const [emails, setEmails] = useState<string[]>([]);
+  const [emails, setEmails] = useState<string[]>(() => {
+    return value ? value.split(',').map(e => e.trim()).filter(Boolean) : [];
+  });
   const [inputValue, setInputValue] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<EmailSuggestion[]>([]);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const onChangeRef = useRef(onChange);
+  const lastEmittedRef = useRef(normalize(value || ''));
 
-  // Initialize emails from value prop
+  onChangeRef.current = onChange;
+
   useEffect(() => {
-    if (value !== undefined) {
-      const emailList = value.split(',').map(email => email.trim()).filter(Boolean);
-      // Only update if the parsed list is actually different from current state
-      // This prevents the infinite loop when value is updated from parent
-      const currentEmailString = emails.join(', ');
-      const newValueString = emailList.join(', ');
-      
-      if (newValueString !== currentEmailString) {
-        setEmails(emailList);
-      }
-    } else {
-      if (emails.length > 0) {
-        setEmails([]);
-      }
+    const newNormalized = normalize(value || '');
+    if (newNormalized === lastEmittedRef.current) {
+      return;
+    }
+    const currentNormalized = normalize(emails.join(','));
+    if (newNormalized !== currentNormalized) {
+      const emailList = value ? value.split(',').map(e => e.trim()).filter(Boolean) : [];
+      setEmails(emailList);
+      lastEmittedRef.current = newNormalized;
     }
   }, [value]);
 
-  // Update parent when emails change
-  useEffect(() => {
-    const emailString = emails.join(', ');
-    // Use a more robust comparison that ignores spacing around commas
-    const normalize = (s: string) => s ? s.split(',').map(e => e.trim()).filter(Boolean).join(',') : '';
-    
-    // Check if we actually need to call onChange
-    const currentValue = value || '';
-    if (normalize(emailString) !== normalize(currentValue)) {
-      onChange(emailString);
-    }
-  }, [emails, onChange, value]);
+  const updateEmails = useCallback((newEmails: string[]) => {
+    setEmails(newEmails);
+    const emailString = newEmails.join(', ');
+    lastEmittedRef.current = normalize(emailString);
+    onChangeRef.current(emailString);
+  }, []);
 
   // Filter suggestions based on input
   useEffect(() => {
@@ -91,7 +87,7 @@ export default function MultiEmailInput({
   const addEmail = (email: string) => {
     const trimmedEmail = email.trim();
     if (trimmedEmail && isValidEmail(trimmedEmail) && !emails.includes(trimmedEmail)) {
-      setEmails(prev => [...prev, trimmedEmail]);
+      updateEmails([...emails, trimmedEmail]);
       setInputValue("");
       setShowSuggestions(false);
       setSelectedSuggestionIndex(-1);
@@ -99,7 +95,7 @@ export default function MultiEmailInput({
   };
 
   const removeEmail = (indexToRemove: number) => {
-    setEmails(prev => prev.filter((_, index) => index !== indexToRemove));
+    updateEmails(emails.filter((_, index) => index !== indexToRemove));
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
