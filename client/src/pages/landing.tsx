@@ -9,6 +9,7 @@ import { Building2, Package, Users, BarChart3 } from "lucide-react";
 import lightLogo from "../assets/light-logo.png";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
 
 export default function Landing() {
   const [showLogin, setShowLogin] = useState(() => {
@@ -34,6 +35,19 @@ export default function Landing() {
         title: "SSO Not Configured",
         description: "SAML SSO is not currently enabled or configured.",
         variant: "destructive"
+      });
+    }
+  };
+
+  const handleLogin = async () => {
+    try {
+      await login(loginData);
+      toast({ title: "Success", description: "Logged in successfully!" });
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Login failed",
+        variant: "destructive" 
       });
     }
   };

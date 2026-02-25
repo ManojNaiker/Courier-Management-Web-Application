@@ -247,6 +247,7 @@ MIICXjCCAcegAwIBAgIBADALBgkqhkiG9w0BAQ0FADCBkjELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAkNB
                     entityId: samlSettings?.entityId || "",
                     ssoUrl: samlSettings?.ssoUrl || "",
                     sloUrl: samlSettings?.sloUrl || "",
+                    entryPoint: samlSettings?.entryPoint || "",
                     x509Certificate: samlSettings?.x509Certificate || "",
                     enabled: samlSettings?.enabled || false
                   })}

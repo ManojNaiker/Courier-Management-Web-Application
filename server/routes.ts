@@ -126,6 +126,23 @@ const readTempUsersFromCSV = (): Array<{email: string, name: string, firstName: 
   }
 };
 
+// Audit log helper function
+export async function logAudit(userId: string, action: string, entityType: string, entityId: string, emailId?: string, details?: string, entityData?: any) {
+  try {
+    await storage.createAuditLog({
+      userId,
+      action,
+      entityType,
+      entityId,
+      emailId: emailId || null,
+      details: details || null,
+      entityData: entityData || null
+    });
+  } catch (error) {
+    console.error('Error creating audit log:', error);
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Email confirmation endpoints (no auth required)
   app.get('/api/couriers/confirm-received', async (req: any, res) => {
@@ -170,7 +187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           <html>
             <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
               <h2 style="color: #16a34a;">✅ Already Confirmed</h2>
-              <p>This courier (POD: ${courier.podNo}) has already been marked as received.</p>
+              <p>This courier (POD: ${(courier as any).podNo}) has already been marked as received.</p>
               <p style="color: #6b7280; font-size: 14px;">Thank you for confirming the delivery.</p>
             </body>
           </html>
@@ -273,7 +290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const mailOptions: any = {
               from: smtpSettings.fromName ? `${smtpSettings.fromName} <${smtpSettings.fromEmail || smtpSettings.username}>` : (smtpSettings.fromEmail || smtpSettings.username),
               to: recipients.join(','),
-              replyTo: courier.email, // Reply goes to the original courier recipient
+              replyTo: (courier as any).email || (courier as any).emailId, // Reply goes to the original courier recipient
               cc: ccRecipients.length > 0 ? ccRecipients.join(',') : undefined,
               subject: 'Courier Received Confirmation - Courier Management System',
               html: `
@@ -318,19 +335,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;color:#374151;">
                       <tr>
                         <td style="padding:4px 0;font-weight:600;">POD Number:</td>
-                        <td style="padding:4px 0;">${courier.podNo}</td>
+                        <td style="padding:4px 0;">${(courier as any).podNo || (courier as any).podNumber}</td>
                       </tr>
                       <tr>
                         <td style="padding:4px 0;font-weight:600;">To Branch:</td>
-                        <td style="padding:4px 0;">${courier.toBranch}</td>
+                        <td style="padding:4px 0;">${(courier as any).toBranch || (courier as any).fromLocation}</td>
                       </tr>
                       <tr>
                         <td style="padding:4px 0;font-weight:600;">Courier Vendor:</td>
-                        <td style="padding:4px 0;">${courier.vendor === 'Others' && courier.customVendor ? courier.customVendor : courier.vendor}</td>
+                        <td style="padding:4px 0;">${(courier as any).vendor === 'Others' && (courier as any).customVendor ? (courier as any).customVendor : ((courier as any).vendor || (courier as any).courierVendor)}</td>
                       </tr>
                       <tr>
                         <td style="padding:4px 0;font-weight:600;">Courier Date:</td>
-                        <td style="padding:4px 0;">${courier.courierDate || 'N/A'}</td>
+                        <td style="padding:4px 0;">${(courier as any).courierDate || (courier as any).receivedDate || 'N/A'}</td>
                       </tr>
                       <tr>
                         <td style="padding:4px 0;font-weight:600;">Status:</td>
@@ -389,7 +406,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Log audit for email confirmation with email address for tracking
-      await logAudit(courier.createdBy || 'system', 'EMAIL_CONFIRM_RECEIVED', 'courier', `${courier.id} (${courier.email})`, courier.email, `POD Number: ${courier.podNo}`);
+      await logAudit(courier.createdBy || 'system', 'EMAIL_CONFIRM_RECEIVED', 'courier', `${courier.id} (${(courier as any).email})`, (courier as any).email || undefined, `POD Number: ${(courier as any).podNo}`);
 
       // Success response
       res.send(`
@@ -398,7 +415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             <h2 style="color: #16a34a;">✅ Courier Received Successfully</h2>
             <p>Thank you for confirming the receipt of courier:</p>
             <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 400px;">
-              <p><strong>POD Number:</strong> ${courier.podNo}</p>
+              <p><strong>POD Number:</strong> ${(courier as any).podNo}</p>
               <p><strong>To Branch:</strong> ${courier.toBranch}</p>
               <p><strong>Vendor:</strong> ${courier.vendor || courier.customVendor || 'N/A'}</p>
               <p><strong>Status:</strong> <span style="background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px;">RECEIVED</span></p>
@@ -456,7 +473,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           <html>
             <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
               <h2 style="color: #16a34a;">✅ Already Confirmed</h2>
-              <p>This courier (POD: ${courier.podNo}) has already been marked as received.</p>
+              <p>This courier (POD: ${(courier as any).podNo}) has already been marked as received.</p>
               <p style="color: #6b7280; font-size: 14px;">Thank you for confirming the delivery.</p>
             </body>
           </html>
@@ -559,7 +576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const mailOptions: any = {
               from: smtpSettings.fromName ? `${smtpSettings.fromName} <${smtpSettings.fromEmail || smtpSettings.username}>` : (smtpSettings.fromEmail || smtpSettings.username),
               to: recipients.join(','),
-              replyTo: courier.email, // Reply goes to the original courier recipient
+              replyTo: (courier as any).email || (courier as any).emailId || undefined, // Reply goes to the original courier recipient
               cc: ccRecipients.length > 0 ? ccRecipients.join(',') : undefined,
               subject: 'Courier Received Confirmation - Courier Management System',
               html: `
@@ -670,7 +687,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Log audit for email confirmation with email address for tracking
-      await logAudit(null, 'EMAIL_CONFIRM_RECEIVED', 'received_courier', `${courier.id} (${(courier as any).emailId})`, (courier as any).emailId, `POD Number: ${courier.podNo}`);
+      await logAudit(null as any, 'EMAIL_CONFIRM_RECEIVED', 'received_courier', `${courier.id} (${(courier as any).emailId})`, (courier as any).emailId || undefined, `POD Number: ${(courier as any).podNo || (courier as any).podNumber}`);
 
       // Success response
       res.send(`
@@ -679,9 +696,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             <h2 style="color: #16a34a;">✅ Courier Received Successfully</h2>
             <p>Thank you for confirming the receipt of courier:</p>
             <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 400px;">
-              <p><strong>POD Number:</strong> ${courier.podNo}</p>
-              <p><strong>From:</strong> ${courier.fromLocation}</p>
-              <p><strong>Vendor:</strong> ${courier.courierVendor === 'Others' && (courier as any).customVendor ? (courier as any).customVendor : courier.courierVendor}</p>
+              <p><strong>POD Number:</strong> ${(courier as any).podNo || (courier as any).podNumber}</p>
+              <p><strong>To Branch:</strong> ${(courier as any).toBranch || (courier as any).fromLocation}</p>
+              <p><strong>Vendor:</strong> ${(courier as any).vendor || (courier as any).courierVendor || (courier as any).customVendor || 'N/A'}</p>
               <p><strong>Status:</strong> <span style="background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px;">RECEIVED</span></p>
             </div>
             <p style="color: #6b7280; font-size: 14px;">The status has been updated in our system.</p>
@@ -759,7 +776,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Log successful login
-      await logAudit(user.id, 'LOGIN', 'user', user.id, user.email, `User Email ID and Name: ${user.email} - ${user.name}`);
+      await logAudit(user.id, 'LOGIN', 'user', user.id, user.email || undefined, `User Email ID and Name: ${user.email} - ${user.name}`);
 
       res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
     } catch (error) {
@@ -804,7 +821,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Log user registration
-      await logAudit(newUser.id, 'REGISTER', 'user', newUser.id, newUser.email, `User Email ID and Name: ${newUser.email} - ${newUser.name}`);
+      await logAudit(newUser.id, 'REGISTER', 'user', newUser.id, newUser.email || undefined, `User Email ID and Name: ${newUser.email} - ${newUser.name}`);
 
       res.status(201).json({ token, user: { id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role } });
     } catch (error) {
@@ -1107,7 +1124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Log the password change
-      await logAudit(userId, 'UPDATE', 'user_password', userId, user.email, 'User changed password');
+      await logAudit(userId, 'UPDATE', 'user_password', userId, user.email || undefined, 'User changed password');
 
       res.json({ message: 'Password changed successfully' });
     } catch (error) {
@@ -1228,7 +1245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `User profile self-updated. Changes: ${changes.join(', ')}` :
         'User profile self-updated - No changes detected';
 
-      await logAudit(userId, 'UPDATE', 'user_profile', userId, updatedUser.email, auditDetails);
+      await logAudit(userId, 'UPDATE', 'user_profile', userId, updatedUser.email || undefined, auditDetails);
 
       // Return filtered user data
       const secureUserData = userPrivateSchema.parse({
@@ -1342,7 +1359,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'CREATE', 
         'user', 
         newUser.id,
-        newUser.email,
+        newUser.email || undefined,
         `User Email ID and Name: ${newUser.email} - ${newUser.name}`,
         {
           userName: newUser.name,
@@ -1637,7 +1654,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'User not found' });
       }
 
-      await logAudit(req.user.id, 'UPDATE', 'user_profile_image', req.user.id, updatedUser.email, `User Email ID and Name: ${updatedUser.email} - ${updatedUser.name}`);
+      await logAudit(req.user.id, 'UPDATE', 'user_profile_image', req.user.id, updatedUser.email || undefined, `User Email ID and Name: ${updatedUser.email} - ${updatedUser.name}`);
 
       res.json({ 
         message: 'Profile image updated successfully',
@@ -1661,12 +1678,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // If user doesn't exist, consider it already deleted (success case)
         // Get user for audit before deletion
         const userToDelete = await storage.getUser(userId);
-        await logAudit(req.currentUser.id, 'DELETE', 'user', userId, userToDelete?.email, `User Email ID and Name: ${userToDelete?.email} - ${userToDelete?.name}`);
+        await logAudit(req.currentUser.id, 'DELETE', 'user', userId, userToDelete?.email || undefined, `User Email ID and Name: ${userToDelete?.email} - ${userToDelete?.name}`);
         return res.json({ message: 'User deleted successfully' });
       }
 
       // Note: user already deleted at this point, using userId for reference
-      await logAudit(req.currentUser.id, 'DELETE', 'user', userId, null, `User deleted (ID: ${userId})`);
+      await logAudit(req.currentUser.id, 'DELETE', 'user', userId, undefined, `User deleted (ID: ${userId})`);
 
       res.json({ message: 'User deleted successfully' });
     } catch (error) {
@@ -1675,7 +1692,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         // Get user for audit log
         const userForAudit = await storage.getUser(req.params.id);
-        await logAudit(req.currentUser.id, 'DELETE_ATTEMPT', 'user', req.params.id, userForAudit?.email, `User Email ID and Name: ${userForAudit?.email} - ${userForAudit?.name}`);
+        await logAudit(req.currentUser.id, 'DELETE_ATTEMPT', 'user', req.params.id, userForAudit?.email || undefined, `User Email ID and Name: ${userForAudit?.email} - ${userForAudit?.name}`);
       } catch (auditError) {
         console.error('Audit log error:', auditError);
       }
@@ -1980,7 +1997,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertFieldSchema.parse(req.body);
       const field = await storage.createField(validatedData);
       
-      await logAudit(req.currentUser.id, 'CREATE', 'field', field.id, null, `Field Name: ${field.name}`);
+      await logAudit(req.currentUser.id, 'CREATE', 'field', field.id, undefined, `Field Name: ${field.name}`);
       
       res.status(201).json(field);
     } catch (error) {
@@ -2884,7 +2901,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get courier POD before deletion
       const courierToDelete = await storage.getCourierById(id);
-      await logAudit(req.currentUser.id, 'DELETE', 'courier', id, null, `POD Number: ${courierToDelete?.podNo || 'Unknown'}`);
+      await logAudit(req.currentUser.id, 'DELETE', 'courier', id, undefined, `POD Number: ${courierToDelete?.podNo || (courierToDelete as any)?.podNumber || 'Unknown'}`);
       
       res.json({ message: "Courier deleted successfully" });
     } catch (error) {
@@ -2904,7 +2921,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get courier POD for audit
       const courierToRestore = await storage.getCourierById(id);
-      await logAudit(req.currentUser.id, 'RESTORE', 'courier', id, null, `POD Number: ${courierToRestore?.podNo || 'Unknown'}`);
+      await logAudit(req.currentUser.id, 'RESTORE', 'courier', id, undefined, `POD Number: ${courierToRestore?.podNo || (courierToRestore as any)?.podNumber || 'Unknown'}`);
       
       res.json({ message: "Courier restored successfully" });
     } catch (error) {
@@ -4038,7 +4055,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertFieldSchema.parse(req.body);
       const field = await storage.createField(validatedData);
       
-      await logAudit(req.currentUser.id, 'CREATE', 'field', field.id, null, `Field Name: ${field.name}`);
+      await logAudit(req.currentUser.id, 'CREATE', 'field', field.id, undefined, `Field Name: ${field.name}`);
       
       res.status(201).json(field);
     } catch (error) {
@@ -4094,7 +4111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `SMTP Settings updated by ${req.currentUser.name} (${req.currentUser.email}). Changes: ${changes.join(', ')}` :
         `SMTP Settings accessed by ${req.currentUser.name} (${req.currentUser.email}) - No changes detected`;
       
-      await logAudit(req.currentUser.id, 'UPDATE', 'smtp_settings', null, req.currentUser.email, auditDetails);
+      await logAudit(req.currentUser.id, 'UPDATE', 'smtp_settings', undefined, req.currentUser.email, auditDetails);
       
       res.json(settings);
     } catch (error) {
@@ -4145,7 +4162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const auditDetails = `SAML Settings updated by ${req.currentUser.name}. ${changes.join(', ')}`;
-      await logAudit(req.currentUser.id, 'UPDATE', 'saml_settings', null, req.currentUser.email, auditDetails);
+      await logAudit(req.currentUser.id, 'UPDATE', 'saml_settings', undefined, req.currentUser.email, auditDetails);
       
       res.json(settings);
     } catch (error) {
@@ -5948,13 +5965,7 @@ ${result.value}
       
       const changeDetails = `Department: [${oldDeptNames.join(', ')}] → [${newDeptNames.join(', ')}]`;
       
-      await logAudit(
-        req.currentUser.id, 
-        'UPDATE', 
-        'user', 
-        userId, 
-        targetUser?.email, 
-        `User updated: ${targetUser?.name} (${targetUser?.email}) - ${changeDetails}`,
+      await logAudit(userId, 'UPDATE', 'user', userId, targetUser?.email || undefined, `User updated: ${targetUser?.name} (${targetUser?.email}) - ${changeDetails}`,
         {
           userName: targetUser?.name,
           userEmail: targetUser?.email,
@@ -6005,7 +6016,7 @@ ${result.value}
       };
 
       const settings = await storage.updateSmtpSettings(smtpData);
-      await logAudit(req.currentUser.id, 'UPDATE', 'smtp_settings', settings.id);
+      await logAudit(req.currentUser.id, 'UPDATE', 'smtp_settings', settings.id, req.currentUser.email || undefined);
       
       res.json({ message: "SMTP settings saved successfully", settings });
     } catch (error) {

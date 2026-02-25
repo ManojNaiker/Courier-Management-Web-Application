@@ -121,7 +121,7 @@ export default function UserDepartmentsDialog({ user, onClose, onSuccess }: User
               </div>
             ) : (
               <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
-                {departments.map((department: any) => (
+                {(departments as any[]).map((department: any) => (
                   <div key={department.id} className="flex items-center space-x-2">
                     <Checkbox
                       id={`dept-${department.id}`}

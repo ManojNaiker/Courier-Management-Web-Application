@@ -42,7 +42,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   // Check if user has access to branches
   const shouldShowBranches = (user as any)?.role === 'admin' || (user as any)?.role === 'sub_admin' || 
-    userPermissions?.accessibleTabs?.includes('branches');
+    (userPermissions as any)?.accessibleTabs?.includes('branches');
 
   const navigation = [
     { name: "Dashboard", href: "/", icon: BarChart3, current: location === "/" },

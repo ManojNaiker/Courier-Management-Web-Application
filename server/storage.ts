@@ -368,14 +368,13 @@ export class DatabaseStorage implements IStorage {
 
   // Department operations
   async getAllDepartments(includeDeleted: boolean = false): Promise<Department[]> {
-    let query = db.select().from(departments);
+    let query = db.select().from(departments).$dynamic();
     
     if (!includeDeleted) {
       query = query.where(isNull(departments.deletedAt));
     }
     
-    query = query.orderBy(departments.name);
-    return await query;
+    return await query.orderBy(departments.name);
   }
 
   async getDepartmentById(id: number): Promise<Department | undefined> {
