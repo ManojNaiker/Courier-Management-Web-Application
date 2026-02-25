@@ -263,7 +263,7 @@ export default function ReceivedCouriers() {
 
   // Update email suggestions based on selected user or branch
   useEffect(() => {
-    const suggestions: string[] = [];
+    const suggestions: { email: string; name: string; type: 'branch' | 'user' }[] = [];
     
     // Add emails from branches
     const actualBranches = Array.isArray(branchesData) 
@@ -274,8 +274,15 @@ export default function ReceivedCouriers() {
 
     if (Array.isArray(actualBranches)) {
       actualBranches.forEach((branch: any) => {
-        if (branch && branch.email && !suggestions.includes(branch.email)) {
-          suggestions.push(branch.email);
+        if (branch && branch.email) {
+          const exists = suggestions.find(s => s.email === branch.email);
+          if (!exists) {
+            suggestions.push({ 
+              email: branch.email, 
+              name: branch.branchName || 'Branch', 
+              type: 'branch' 
+            });
+          }
         }
       });
     }
@@ -289,13 +296,20 @@ export default function ReceivedCouriers() {
 
     if (Array.isArray(actualUsers)) {
       actualUsers.forEach((u: any) => {
-        if (u && u.email && !suggestions.includes(u.email)) {
-          suggestions.push(u.email);
+        if (u && u.email) {
+          const exists = suggestions.find(s => s.email === u.email);
+          if (!exists) {
+            suggestions.push({ 
+              email: u.email, 
+              name: u.name || u.email, 
+              type: 'user' 
+            });
+          }
         }
       });
     }
 
-    setEmailSuggestions(suggestions);
+    setEmailSuggestions(suggestions as any);
   }, [branchesData, usersData]);
 
   const resetForm = () => {
@@ -742,11 +756,11 @@ export default function ReceivedCouriers() {
                   />
                 </div>
 
-                {/* Receiver Email with Suggestions */}
+                {/* Receiver Email(s) with Suggestions */}
                 <div className="space-y-1">
                   <Label htmlFor="emailId" className="text-sm font-medium">Receiver Email(s)</Label>
-                  <Autocomplete
-                    options={emailSuggestions}
+                  <MultiEmailInput
+                    suggestions={emailSuggestions as any}
                     value={formData.emailId || ""}
                     onChange={(value) => setFormData({ ...formData, emailId: value })}
                     placeholder="Enter or select receiver email(s)"
@@ -761,8 +775,8 @@ export default function ReceivedCouriers() {
                 {/* CC Emails with Suggestions */}
                 <div className="space-y-1">
                   <Label htmlFor="ccEmails" className="text-sm font-medium">CC Email(s)</Label>
-                  <Autocomplete
-                    options={emailSuggestions}
+                  <MultiEmailInput
+                    suggestions={emailSuggestions as any}
                     value={(formData as any).ccEmails || ""}
                     onChange={(value) => setFormData({ ...formData, ccEmails: value })}
                     placeholder="Enter or select CC email(s)"
