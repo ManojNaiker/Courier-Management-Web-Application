@@ -13,6 +13,7 @@ import { Menu, Bell, ChevronDown } from "lucide-react";
 import { useLocation } from "wouter";
 import AccountProfile from "./account-profile";
 import lightLogo from "@/assets/light-logo.png";
+import { useQuery } from "@tanstack/react-query";
 
 interface TopNavbarProps {
   onMenuClick: () => void;
@@ -22,7 +23,11 @@ export default function TopNavbar({ onMenuClick }: TopNavbarProps) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
 
+  const { data: stats } = useQuery<{ total: number; onTheWay: number }>({
+    queryKey: ["/api/couriers/stats"],
+  });
 
+  const notificationCount = stats?.onTheWay || 0;
 
   const handleLogout = async () => {
     await logout();
@@ -66,17 +71,37 @@ export default function TopNavbar({ onMenuClick }: TopNavbarProps) {
         {/* Right side */}
         <div className="ml-4 flex items-center md:ml-6 space-x-4">
           {/* Notifications */}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="relative p-2"
-            data-testid="button-notifications"
-          >
-            <Bell className="h-5 w-5" />
-            <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-              3
-            </span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="relative p-2"
+                data-testid="button-notifications"
+              >
+                <Bell className="h-5 w-5" />
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
+                    {notificationCount}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <div className="px-2 py-2 font-semibold text-sm border-b">
+                Notifications
+              </div>
+              {notificationCount > 0 ? (
+                <DropdownMenuItem className="cursor-default">
+                  You have {notificationCount} courier{notificationCount > 1 ? 's' : ''} on the way.
+                </DropdownMenuItem>
+              ) : (
+                <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                  No new notifications
+                </div>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Theme Toggle */}
           <ThemeToggle />
