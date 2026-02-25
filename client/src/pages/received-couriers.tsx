@@ -341,8 +341,10 @@ export default function ReceivedCouriers() {
         if (!allEmails.includes(e)) allEmails.push(e);
       });
     }
-    if ((courier as any).ccEmails) {
-      (courier as any).ccEmails.split(',').map((e: string) => e.trim()).filter(Boolean).forEach((e: string) => {
+    // Remove duplication check for CC emails if it's already handled in the component
+    const ccEmails = (courier as any).ccEmails;
+    if (ccEmails) {
+      ccEmails.split(',').map((e: string) => e.trim()).filter(Boolean).forEach((e: string) => {
         if (!allEmails.includes(e)) allEmails.push(e);
       });
     }

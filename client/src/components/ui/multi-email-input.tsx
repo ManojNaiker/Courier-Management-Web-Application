@@ -58,8 +58,11 @@ export default function MultiEmailInput({
   useEffect(() => {
     const emailString = emails.join(', ');
     // Use a more robust comparison that ignores spacing around commas
-    const normalize = (s: string) => s.split(',').map(e => e.trim()).filter(Boolean).join(',');
-    if (value !== undefined && normalize(emailString) !== normalize(value)) {
+    const normalize = (s: string) => s ? s.split(',').map(e => e.trim()).filter(Boolean).join(',') : '';
+    
+    // Check if we actually need to call onChange
+    const currentValue = value || '';
+    if (normalize(emailString) !== normalize(currentValue)) {
       onChange(emailString);
     }
   }, [emails, onChange, value]);
