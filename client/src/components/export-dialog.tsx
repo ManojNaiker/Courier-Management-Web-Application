@@ -44,10 +44,9 @@ export function ExportDialog({ title, exportType, children }: ExportDialogProps)
         const a = document.createElement('a');
         a.href = downloadUrl;
         
-        // Generate filename with date range
         const dateRange = startDate && endDate ? `_${startDate}_to_${endDate}` : '';
         const filename = exportType === 'couriers' 
-          ? `couriers-export${dateRange}.csv`
+          ? `couriers-export${dateRange}.xlsx`
           : `audit-logs-export${dateRange}.csv`;
         
         a.download = filename;
@@ -98,7 +97,7 @@ export function ExportDialog({ title, exportType, children }: ExportDialogProps)
         <div className="space-y-4">
           <div className="text-sm text-slate-600">
             {exportType === 'couriers' 
-              ? "Export both sent and received couriers data with status information."
+              ? "Export couriers data as Excel file with separate sheets for Sent and Received couriers."
               : "Export audit logs with user activity details."
             }
           </div>
@@ -161,7 +160,7 @@ export function ExportDialog({ title, exportType, children }: ExportDialogProps)
               ) : (
                 <>
                   <Download className="h-4 w-4 mr-2" />
-                  Export CSV
+                  {exportType === 'couriers' ? 'Export Excel' : 'Export CSV'}
                 </>
               )}
             </Button>

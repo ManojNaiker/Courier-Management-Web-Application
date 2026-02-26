@@ -2386,8 +2386,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { startDate, endDate } = req.query;
       const user = req.currentUser;
+      const ExcelJS = (await import('exceljs')).default;
       
-      // Build filters based on user role
       const courierFilters: any = { 
         limit: 10000,
         startDate,
@@ -2400,9 +2400,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         endDate
       };
       
-      // Apply department filtering for export based on user role and policies
       if (user.role !== 'admin') {
-        // Check if user's department has permission to view all couriers
         let canViewAllCouriers = false;
         if (user.departmentId) {
           try {
@@ -2414,69 +2412,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         if (!canViewAllCouriers) {
-          // Non-admin users without view_all_couriers permission can only export their department's data
           courierFilters.departmentId = user.departmentId;
           receivedFilters.departmentId = user.departmentId;
         }
-        // If canViewAllCouriers is true, no departmentId filter is applied (export all departments)
       }
       
-      // Get sent couriers with date and department filtering
       const sentCouriers = await storage.getAllCouriers(courierFilters);
-      
-      // Get received couriers with date and department filtering
       const receivedCouriers = await storage.getAllReceivedCouriers(receivedFilters);
-      
-      // Create CSV content
-      const headers = ['Type', 'POD No', 'To Branch / From Location', 'Email', 'Vendor', 'Date', 'Status', 'Details', 'Contact Details', 'Remarks', 'Department', 'Created By'];
-      const csvRows = [headers.join(',')];
-      
-      // Add sent couriers
-      sentCouriers.couriers.forEach(courier => {
-        const row = [
-          'Sent Courier',
+
+      const formatDate = (dateStr: string | null | undefined) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'T00:00:00');
+        if (isNaN(d.getTime())) return dateStr;
+        return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+      };
+
+      const formatStatus = (status: string | null | undefined) => {
+        if (!status) return '';
+        const map: Record<string, string> = {
+          'on_the_way': 'On The Way',
+          'received': 'Received',
+          'completed': 'Completed',
+          'delivered': 'Delivered',
+          'deleted': 'Deleted',
+          'dispatched': 'Dispatched'
+        };
+        return map[status] || status;
+      };
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Courier Management System';
+      workbook.created = new Date();
+
+      const headerStyle: Partial<ExcelJS.Style> = {
+        font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } },
+        alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+        border: {
+          top: { style: 'thin' }, bottom: { style: 'thin' },
+          left: { style: 'thin' }, right: { style: 'thin' }
+        }
+      };
+
+      const cellBorder: Partial<ExcelJS.Borders> = {
+        top: { style: 'thin' }, bottom: { style: 'thin' },
+        left: { style: 'thin' }, right: { style: 'thin' }
+      };
+
+      const sentSheet = workbook.addWorksheet('Sent Couriers');
+      const sentHeaders = [
+        'S.No', 'POD No', 'To Branch', 'Email', 'CC Emails', 'Vendor',
+        'Courier Date', 'Status', 'Receiver Name', 'Details',
+        'Contact Details', 'Remarks', 'Received Date',
+        'Received Remarks', 'Department', 'Created By', 'Created At'
+      ];
+      const sentHeaderRow = sentSheet.addRow(sentHeaders);
+      sentHeaderRow.eachCell(cell => { cell.style = headerStyle as ExcelJS.Style; });
+      sentHeaderRow.height = 25;
+
+      sentCouriers.couriers.forEach((courier, idx) => {
+        const vendorDisplay = courier.vendor === 'Others' && courier.customVendor ? courier.customVendor : (courier.vendor || '');
+        const row = sentSheet.addRow([
+          idx + 1,
           courier.podNo || '',
           courier.toBranch || '',
           courier.email || '',
-          courier.vendor || '',
-          courier.courierDate ? new Date(courier.courierDate).toLocaleDateString() : '',
-          courier.status || '',
+          courier.ccEmails || '',
+          vendorDisplay,
+          formatDate(courier.courierDate),
+          formatStatus(courier.status),
+          courier.receiverName || '',
           courier.details || '',
           courier.contactDetails || '',
           courier.remarks || '',
+          formatDate(courier.receivedDate),
+          courier.receivedRemarks || '',
           courier.department?.name || '',
-          courier.creator?.name || ''
-        ].map(field => `"${(field || '').toString().replace(/"/g, '""')}"`);
-        csvRows.push(row.join(','));
+          courier.creator?.name || '',
+          courier.createdAt ? new Date(courier.createdAt).toLocaleString('en-IN') : ''
+        ]);
+        row.eachCell(cell => { cell.border = cellBorder; });
       });
-      
-      // Add received couriers
-      receivedCouriers.forEach(courier => {
-        const row = [
-          'Received Courier',
-          courier.podNo || '',
+
+      sentSheet.columns.forEach((col, i) => {
+        const widths = [6, 18, 20, 28, 28, 16, 14, 14, 18, 25, 18, 25, 14, 25, 18, 16, 20];
+        col.width = widths[i] || 15;
+      });
+
+      const recvSheet = workbook.addWorksheet('Received Couriers');
+      const recvHeaders = [
+        'S.No', 'POD Number', 'From Location', 'To User', 'Email',
+        'CC Emails', 'Vendor', 'Received Date', 'Status', 'Receiver Name',
+        'Department', 'Custom Department', 'Remarks',
+        'Email Notification', 'Created By', 'Created At'
+      ];
+      const recvHeaderRow = recvSheet.addRow(recvHeaders);
+      recvHeaderRow.eachCell(cell => { cell.style = headerStyle as ExcelJS.Style; });
+      recvHeaderRow.height = 25;
+
+      receivedCouriers.forEach((courier, idx) => {
+        const vendorDisplay = courier.courierVendor === 'Others' && courier.customVendor ? courier.customVendor : (courier.courierVendor || '');
+        const row = recvSheet.addRow([
+          idx + 1,
+          courier.podNumber || '',
           courier.fromLocation || '',
+          courier.toUser || '',
           courier.emailId || '',
-          courier.courierVendor || '',
-          courier.receivedDate ? new Date(courier.receivedDate).toLocaleDateString() : '',
-          'Received',
-          '',
-          '',
-          courier.remarks || '',
+          courier.ccEmails || '',
+          vendorDisplay,
+          formatDate(courier.receivedDate),
+          formatStatus(courier.status),
+          courier.receiverName || '',
           courier.department?.name || '',
-          courier.creator?.name || ''
-        ].map(field => `"${(field || '').toString().replace(/"/g, '""')}"`);
-        csvRows.push(row.join(','));
+          courier.customDepartment || '',
+          courier.remarks || '',
+          courier.sendEmailNotification ? 'Yes' : 'No',
+          courier.creator?.name || '',
+          courier.createdAt ? new Date(courier.createdAt).toLocaleString('en-IN') : ''
+        ]);
+        row.eachCell(cell => { cell.border = cellBorder; });
       });
-      
-      const csvContent = csvRows.join('\n');
-      
+
+      recvSheet.columns.forEach((col, i) => {
+        const widths = [6, 18, 22, 18, 28, 28, 16, 14, 14, 18, 18, 18, 25, 16, 16, 20];
+        col.width = widths[i] || 15;
+      });
+
       const dateRange = startDate && endDate ? `_${startDate}_to_${endDate}` : '';
-      const filename = `couriers-export${dateRange}.csv`;
+      const filename = `couriers-export${dateRange}.xlsx`;
       
-      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(csvContent);
+
+      await workbook.xlsx.write(res);
+      res.end();
     } catch (error) {
       console.error("Error exporting couriers:", error);
       res.status(500).json({ message: "Failed to export couriers" });
