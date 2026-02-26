@@ -5694,43 +5694,54 @@ ${content}
       // Move file to new location with proper name
       fs.renameSync(file.path, newFilePath);
       
-      // Convert Word document to HTML for preview
       let htmlContent = '<p>Word document uploaded but conversion failed</p>';
       try {
-        const result = await mammoth.convertToHtml({path: newFilePath});
-        htmlContent = `
-<!DOCTYPE html>
+        const result = await mammoth.convertToHtml(
+          { path: newFilePath },
+          {
+            styleMap: [
+              "p[style-name='Title'] => h1:fresh",
+              "p[style-name='Heading 1'] => h1:fresh",
+              "p[style-name='Heading 2'] => h2:fresh",
+              "p[style-name='Heading 3'] => h3:fresh",
+              "b => strong",
+              "i => em",
+              "u => u",
+              "table => table.word-table"
+            ]
+          }
+        );
+        htmlContent = `<!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Authority Letter Template</title>
-    <style>
-        body {
-            font-family: 'Times New Roman', serif;
-            font-size: 12px;
-            line-height: 1.4;
-            margin: 0;
-            padding: 20px;
-            color: #000;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 10px 0;
-        }
-        th, td {
-            border: 1px solid #000;
-            padding: 6px;
-            text-align: left;
-        }
-        th {
-            background-color: #f0f0f0;
-            font-weight: bold;
-        }
-        @media print {
-            body { margin: 0; padding: 15px; }
-        }
-    </style>
+<meta charset="UTF-8">
+<style>
+  body {
+    font-family: 'Times New Roman', serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    margin: 0;
+    padding: 40px 60px;
+    color: #000;
+  }
+  h1 { font-size: 18pt; text-align: center; margin-bottom: 20px; }
+  h2 { font-size: 14pt; margin-bottom: 10px; }
+  h3 { font-size: 12pt; margin-bottom: 8px; }
+  p { margin: 6px 0; }
+  table, table.word-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  table td, table th, table.word-table td, table.word-table th {
+    border: 1px solid #000;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  table th, table.word-table th { background-color: #f0f0f0; font-weight: bold; }
+  strong, b { font-weight: bold; }
+  em, i { font-style: italic; }
+  u { text-decoration: underline; }
+  img { max-width: 100%; height: auto; }
+  @media print { body { margin: 0; padding: 20px; } }
+</style>
 </head>
 <body>
 ${result.value}
@@ -5978,21 +5989,17 @@ ${result.value}
       const { templateId, fieldValues } = req.body;
       const user = req.currentUser;
       
-      // Get template
       const template = await storage.getAuthorityLetterTemplate(templateId);
       if (!template) {
         return res.status(404).json({ message: "Template not found" });
       }
       
-      // Check access
       if (user.role !== 'admin' && template.departmentId !== user.departmentId) {
         return res.status(403).json({ message: "Access denied to this template" });
       }
       
-      // Get template fields for proper transformations
       const fields = await storage.getAllAuthorityLetterFields(undefined, templateId);
       
-      // Create field configurations for transformations
       const fieldConfigs: Record<string, any> = {};
       fields.forEach(field => {
         fieldConfigs[field.fieldName] = {
@@ -6003,22 +6010,93 @@ ${result.value}
         };
       });
       
-      // Process all field values with proper transformations
       const processedValues = FieldTransformations.transformAllFields(fieldValues || {}, fieldConfigs);
       
-      // Replace placeholders for preview
-      let htmlContent = template.templateContent;
+      let htmlContent = '';
       
-      // Apply processed field values with transformations
-      Object.entries(processedValues).forEach(([key, value]) => {
-        const placeholder = `##${key}##`;
-        htmlContent = htmlContent.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value as string);
-      });
+      if (template.wordTemplateUrl && fs.existsSync(template.wordTemplateUrl)) {
+        try {
+          const wordBuffer = await WordGenerator.generateWordDocument({
+            templatePath: template.wordTemplateUrl,
+            fieldValues: fieldValues || {},
+            fieldConfigs: fieldConfigs
+          });
+          
+          const mammothResult = await mammoth.convertToHtml(
+            { buffer: wordBuffer },
+            {
+              styleMap: [
+                "p[style-name='Title'] => h1:fresh",
+                "p[style-name='Heading 1'] => h1:fresh",
+                "p[style-name='Heading 2'] => h2:fresh",
+                "p[style-name='Heading 3'] => h3:fresh",
+                "b => strong",
+                "i => em",
+                "u => u",
+                "table => table.word-table"
+              ]
+            }
+          );
+          
+          htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body {
+    font-family: 'Times New Roman', serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    margin: 0;
+    padding: 40px 60px;
+    color: #000;
+  }
+  h1 { font-size: 18pt; text-align: center; margin-bottom: 20px; }
+  h2 { font-size: 14pt; margin-bottom: 10px; }
+  h3 { font-size: 12pt; margin-bottom: 8px; }
+  p { margin: 6px 0; }
+  table, table.word-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  table td, table th, table.word-table td, table.word-table th {
+    border: 1px solid #000;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  table th, table.word-table th { background-color: #f0f0f0; font-weight: bold; }
+  strong, b { font-weight: bold; }
+  em, i { font-style: italic; }
+  u { text-decoration: underline; }
+  img { max-width: 100%; height: auto; }
+  @media print {
+    body { margin: 0; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+${mammothResult.value}
+</body>
+</html>`;
+        } catch (wordError) {
+          console.error('Error generating Word preview:', wordError);
+          htmlContent = template.templateContent;
+          Object.entries(processedValues).forEach(([key, value]) => {
+            const placeholder = `##${key}##`;
+            htmlContent = htmlContent.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value as string);
+          });
+        }
+      } else {
+        htmlContent = template.templateContent;
+        Object.entries(processedValues).forEach(([key, value]) => {
+          const placeholder = `##${key}##`;
+          htmlContent = htmlContent.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value as string);
+        });
+      }
       
-      // Add current date
       const currentDate = new Date().toLocaleDateString('en-GB');
       htmlContent = htmlContent.replace(/##currentDate##/g, currentDate);
       htmlContent = htmlContent.replace(/##current_date##/g, currentDate);
+      htmlContent = htmlContent.replace(/##Current Date##/g, currentDate);
+      htmlContent = htmlContent.replace(/##Currunt Date##/g, currentDate);
       
       res.json({
         content: htmlContent,
