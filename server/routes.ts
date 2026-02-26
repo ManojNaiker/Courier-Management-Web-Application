@@ -144,6 +144,55 @@ export async function logAudit(userId: string, action: string, entityType: strin
   }
 }
 
+function generateHTMLFromFields(
+  templateName: string,
+  fields: Array<{ fieldName: string; fieldLabel: string; fieldType: string }>,
+  fieldValues: Record<string, any>,
+  processedValues: Record<string, any>
+): string {
+  const currentDate = new Date().toLocaleDateString('en-GB');
+  
+  let fieldRows = '';
+  fields.forEach(field => {
+    const value = processedValues[field.fieldName] ?? fieldValues[field.fieldName] ?? `<span style="color:#999">##${field.fieldName}##</span>`;
+    fieldRows += `
+    <tr>
+      <td style="font-weight:bold; width:35%; padding:8px; border:1px solid #ccc;">${field.fieldLabel.replace(/^##|##$/g, '') || field.fieldName}</td>
+      <td style="padding:8px; border:1px solid #ccc;">${value}</td>
+    </tr>`;
+  });
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body {
+    font-family: 'Times New Roman', serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    margin: 0;
+    padding: 40px 60px;
+    color: #000;
+  }
+  h1 { font-size: 16pt; text-align: center; margin-bottom: 20px; font-weight: bold; text-decoration: underline; }
+  .date { text-align: right; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+  td { padding: 8px; border: 1px solid #ccc; vertical-align: top; }
+  .footer { margin-top: 40px; }
+  .note { color: #666; font-size: 10pt; margin-top: 20px; font-style: italic; }
+</style>
+</head>
+<body>
+  <h1>${templateName}</h1>
+  <div class="date">${currentDate}</div>
+  <table>${fieldRows}
+  </table>
+  <div class="note">Please upload a Word template (.docx) in the Manage Authority Letters page for a formatted letter layout.</div>
+</body>
+</html>`;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Email confirmation endpoints (no auth required)
   app.get('/api/couriers/confirm-received', async (req: any, res) => {
@@ -5480,23 +5529,39 @@ Jigar Jodhani
         
         return res.send(wordBuffer);
       } else {
-        // Fallback: Convert HTML template to Word document
         console.log('Converting HTML template to Word document');
         
-        // Replace placeholders in template content
-        let content = template.templateContent;
+        const templateFields = await storage.getAllAuthorityLetterFields(undefined, templateId);
+        const fieldConfigs: Record<string, any> = {};
+        templateFields.forEach(field => {
+          fieldConfigs[field.fieldName] = {
+            fieldType: field.fieldType,
+            textTransform: field.textTransform,
+            numberFormat: field.numberFormat,
+            dateFormat: field.dateFormat
+          };
+        });
         
-        // Replace ##field## placeholders with actual values
-        for (const [fieldName, value] of Object.entries(fieldValues || {})) {
-          const placeholder = `##${fieldName}##`;
-          content = content.replace(new RegExp(placeholder, 'g'), value as string);
+        const isDefaultContent = !template.templateContent || 
+          template.templateContent.includes('Default authority letter template content');
+        
+        let content = '';
+        if (isDefaultContent && templateFields.length > 0) {
+          const processedValues = FieldTransformations.transformAllFields(fieldValues || {}, fieldConfigs);
+          content = generateHTMLFromFields(template.templateName, templateFields, fieldValues || {}, processedValues);
+        } else {
+          content = template.templateContent;
+          const processedValues = FieldTransformations.transformAllFields(fieldValues || {}, fieldConfigs);
+          for (const [fieldName, value] of Object.entries(processedValues)) {
+            const placeholder = `##${fieldName}##`;
+            content = content.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value as string);
+          }
+          const currentDate = new Date().toLocaleDateString('en-GB');
+          content = content.replace(/##currentDate##/g, currentDate);
+          content = content.replace(/##current_date##/g, currentDate);
+          content = content.replace(/##Current Date##/g, currentDate);
+          content = content.replace(/##Currunt Date##/g, currentDate);
         }
-        
-        // Add current date
-        content = content.replace(/##Current Date##/g, new Date().toLocaleDateString());
-        
-        // Convert HTML to Word document using mammoth (reverse conversion)
-        // Since mammoth only converts Word to HTML, we'll create a simple Word-like document
         const wordContent = `
 <!DOCTYPE html>
 <html>
@@ -5921,12 +5986,34 @@ ${result.value}
         
         return res.send(wordBuffer);
       } else {
-        // Use HTML template generation
         console.log('Using HTML template generation');
         
+        const templateFields = await storage.getAllAuthorityLetterFields(undefined, templateId);
+        const fieldCfgs: Record<string, any> = {};
+        templateFields.forEach(field => {
+          fieldCfgs[field.fieldName] = {
+            fieldType: field.fieldType,
+            textTransform: field.textTransform,
+            numberFormat: field.numberFormat,
+            dateFormat: field.dateFormat
+          };
+        });
+        
+        const isDefaultContent = !template.templateContent || 
+          template.templateContent.includes('Default authority letter template content');
+        
+        let htmlForPdf = '';
+        if (isDefaultContent && templateFields.length > 0) {
+          const processedVals = FieldTransformations.transformAllFields(fieldValues || {}, fieldCfgs);
+          htmlForPdf = generateHTMLFromFields(template.templateName, templateFields, fieldValues || {}, processedVals);
+        } else {
+          htmlForPdf = template.templateContent;
+        }
+        
         pdfBuffer = await PDFGenerator.generatePDF({
-          templateContent: template.templateContent,
-          fieldValues,
+          templateContent: htmlForPdf,
+          fieldValues: fieldValues || {},
+          fieldConfigs: fieldCfgs,
           fileName: `authority_letter_${Date.now()}.pdf`
         });
         
@@ -5951,27 +6038,112 @@ ${result.value}
       const { templateId, fieldValues } = req.body;
       const user = req.currentUser;
       
-      // Get template
       const template = await storage.getAuthorityLetterTemplate(templateId);
       if (!template) {
         return res.status(404).json({ message: "Template not found" });
       }
       
-      // Check access
       if (user.role !== 'admin' && template.departmentId !== user.departmentId) {
         return res.status(403).json({ message: "Access denied to this template" });
       }
       
-      // Generate PDF
+      const fields = await storage.getAllAuthorityLetterFields(undefined, templateId);
+      const fieldConfigs: Record<string, any> = {};
+      fields.forEach(field => {
+        fieldConfigs[field.fieldName] = {
+          fieldType: field.fieldType,
+          textTransform: field.textTransform,
+          numberFormat: field.numberFormat,
+          dateFormat: field.dateFormat
+        };
+      });
+      
+      let htmlForPdf = '';
+      
+      if (template.wordTemplateUrl && fs.existsSync(template.wordTemplateUrl)) {
+        try {
+          const wordBuffer = await WordGenerator.generateWordDocument({
+            templatePath: template.wordTemplateUrl,
+            fieldValues: fieldValues || {},
+            fieldConfigs: fieldConfigs
+          });
+          
+          const mammothResult = await mammoth.convertToHtml(
+            { buffer: wordBuffer },
+            {
+              styleMap: [
+                "p[style-name='Title'] => h1:fresh",
+                "p[style-name='Heading 1'] => h1:fresh",
+                "p[style-name='Heading 2'] => h2:fresh",
+                "p[style-name='Heading 3'] => h3:fresh",
+                "b => strong",
+                "i => em",
+                "u => u",
+                "table => table.word-table"
+              ]
+            }
+          );
+          
+          htmlForPdf = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body {
+    font-family: 'Times New Roman', serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    margin: 0;
+    padding: 40px 60px;
+    color: #000;
+  }
+  h1 { font-size: 18pt; text-align: center; margin-bottom: 20px; }
+  h2 { font-size: 14pt; margin-bottom: 10px; }
+  h3 { font-size: 12pt; margin-bottom: 8px; }
+  p { margin: 6px 0; }
+  table, table.word-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  table td, table th, table.word-table td, table.word-table th {
+    border: 1px solid #000;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  table th, table.word-table th { background-color: #f0f0f0; font-weight: bold; }
+  strong, b { font-weight: bold; }
+  em, i { font-style: italic; }
+  u { text-decoration: underline; }
+  img { max-width: 100%; height: auto; }
+</style>
+</head>
+<body>
+${mammothResult.value}
+</body>
+</html>`;
+        } catch (wordError) {
+          console.error('Error generating PDF from Word template:', wordError);
+          htmlForPdf = template.templateContent;
+        }
+      } else {
+        const isDefaultContent = !template.templateContent || 
+          template.templateContent.includes('Default authority letter template content');
+        
+        if (isDefaultContent && fields.length > 0) {
+          const processedValues = FieldTransformations.transformAllFields(fieldValues || {}, fieldConfigs);
+          htmlForPdf = generateHTMLFromFields(template.templateName, fields, fieldValues || {}, processedValues);
+        } else {
+          htmlForPdf = template.templateContent;
+        }
+      }
+      
       const pdfBuffer = await PDFGenerator.generatePDF({
-        templateContent: template.templateContent,
-        fieldValues,
+        templateContent: htmlForPdf,
+        fieldValues: fieldValues || {},
+        fieldConfigs: fieldConfigs,
         fileName: `authority_letter_${Date.now()}.pdf`
       });
       
       await logAudit(user.id, 'CREATE', 'authority_letter_pdf', template.id.toString());
       
-      // Set headers for PDF download
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="authority_letter_${template.templateName}_${Date.now()}.pdf"`);
       res.setHeader('Content-Length', pdfBuffer.length);
@@ -6085,18 +6257,25 @@ ${mammothResult.value}
           });
         }
       } else {
-        htmlContent = template.templateContent;
-        Object.entries(processedValues).forEach(([key, value]) => {
-          const placeholder = `##${key}##`;
-          htmlContent = htmlContent.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value as string);
-        });
+        const isDefaultContent = !template.templateContent || 
+          template.templateContent.includes('Default authority letter template content');
+        
+        if (isDefaultContent && fields.length > 0) {
+          htmlContent = generateHTMLFromFields(template.templateName, fields, fieldValues || {}, processedValues);
+        } else {
+          htmlContent = template.templateContent;
+          Object.entries(processedValues).forEach(([key, value]) => {
+            const placeholder = `##${key}##`;
+            htmlContent = htmlContent.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value as string);
+          });
+          
+          const currentDate = new Date().toLocaleDateString('en-GB');
+          htmlContent = htmlContent.replace(/##currentDate##/g, currentDate);
+          htmlContent = htmlContent.replace(/##current_date##/g, currentDate);
+          htmlContent = htmlContent.replace(/##Current Date##/g, currentDate);
+          htmlContent = htmlContent.replace(/##Currunt Date##/g, currentDate);
+        }
       }
-      
-      const currentDate = new Date().toLocaleDateString('en-GB');
-      htmlContent = htmlContent.replace(/##currentDate##/g, currentDate);
-      htmlContent = htmlContent.replace(/##current_date##/g, currentDate);
-      htmlContent = htmlContent.replace(/##Current Date##/g, currentDate);
-      htmlContent = htmlContent.replace(/##Currunt Date##/g, currentDate);
       
       res.json({
         content: htmlContent,
